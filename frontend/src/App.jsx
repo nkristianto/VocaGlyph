@@ -242,7 +242,7 @@ function HotkeyCapture({ current, onChange }) {
                     mode === 'capture' ? 'vtt-hotkey-badge--capturing' : '',
                     errorMsg ? 'vtt-hotkey-badge--error' : '',
                 ].join(' ').trim()}
-                onClick={() => setMode(m => m === 'capture' ? 'idle' : 'capture')}
+                onClick={() => { setMode(m => m === 'capture' ? 'idle' : 'capture'); setErrorMsg(null); }}
                 title={mode === 'capture' ? 'Press new shortcut… (Esc to cancel)' : 'Click to change hotkey'}
                 aria-label={`Hotkey: ${displayed}. ${mode === 'capture' ? 'Press new shortcut' : 'Click to change'}`}
             >
