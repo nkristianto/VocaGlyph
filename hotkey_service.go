@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.design/x/hotkey"
 )
@@ -94,6 +95,7 @@ type HotkeyService struct {
 	combo        string // current hotkey combo string e.g. "ctrl+space"
 	registered   atomic.Bool
 	shuttingDown atomic.Bool        // set during app quit; defers skip CGo Unregister
+	doneCh       chan struct{}      // closed when the active listen goroutine exits
 	parentCtx    context.Context    // root context from Start() — used by Reregister
 	cancel       context.CancelFunc // cancels the listen goroutine
 	onTrigger    func()
@@ -139,6 +141,10 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 	curBackend := s.backend // capture NOW — prevents Reregister() swap from affecting this defer
 	curCombo := s.combo
 	keydown := curBackend.Keydown()
+	// Each listen goroutine gets a fresh doneCh. Store it under the lock
+	// so Reregister() and Stop() can safely swap it.
+	doneCh := make(chan struct{})
+	s.doneCh = doneCh
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -150,6 +156,7 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 			}
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", curCombo)
+			close(doneCh) // signal that this goroutine has fully exited
 		}()
 		for {
 			select {
@@ -203,6 +210,9 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 	listenCtx, cancel := context.WithCancel(parent)
 	s.cancel = cancel
 	trigger := s.onTrigger
+	// Replace doneCh so Stop() always waits on the LATEST goroutine.
+	newDoneCh := make(chan struct{})
+	s.doneCh = newDoneCh
 	keydown := newBackend.Keydown()
 	go func() {
 		defer func() {
@@ -215,6 +225,7 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 			}
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", newCombo)
+			close(newDoneCh) // signal exit
 		}()
 		for {
 			select {
@@ -236,13 +247,24 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 
 // Stop signals that the app is shutting down, cancels the listen goroutine,
 // and sets the shuttingDown flag so defers skip the CGo Unregister call.
-// Must be called before runtime.Quit() to avoid a CGo/Cocoa shutdown panic.
+// It then waits up to 200ms for the goroutine to actually exit, ensuring no
+// CGo callbacks are in-flight when runtime.Quit() triggers Cocoa teardown.
 func (s *HotkeyService) Stop() {
 	s.shuttingDown.Store(true)
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	doneCh := s.doneCh
 	if s.cancel != nil {
 		s.cancel()
+	}
+	s.mu.Unlock()
+
+	if doneCh != nil {
+		select {
+		case <-doneCh:
+			// goroutine exited cleanly
+		case <-time.After(200 * time.Millisecond):
+			log.Printf("hotkey: Stop() timed out waiting for goroutine to exit")
+		}
 	}
 }
 
