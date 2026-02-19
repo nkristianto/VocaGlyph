@@ -140,6 +140,9 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 	keydown := curBackend.Keydown()
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("hotkey: recovered panic during Start cleanup (CGo/shutdown race): %v", r)
+			}
 			curBackend.Unregister() //nolint:errcheck
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", curCombo)
@@ -199,6 +202,9 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 	keydown := newBackend.Keydown()
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("hotkey: recovered panic during Reregister cleanup (CGo/shutdown race): %v", r)
+			}
 			newBackend.Unregister() //nolint:errcheck
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", newCombo)

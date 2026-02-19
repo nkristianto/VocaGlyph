@@ -261,6 +261,13 @@ func (a *App) SaveWindowPosition() {
 	if ctx == nil {
 		return
 	}
+	// runtime.WindowGetPosition can panic if the window is hidden or the Wails
+	// runtime is already tearing down — recover() keeps the quit clean.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("config: recovered panic in SaveWindowPosition: %v", r)
+		}
+	}()
 	x, y := runtime.WindowGetPosition(ctx)
 	cfg := a.config.Load()
 	cfg.WindowX = x

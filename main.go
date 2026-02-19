@@ -43,9 +43,11 @@ func main() {
 	})
 
 	err := wails.Run(&options.App{
-		Title:  "voice-to-text",
-		Width:  360,
-		Height: 420,
+		Title:     "voice-to-text",
+		Width:     360,
+		Height:    420,
+		MinWidth:  300,
+		MinHeight: 380,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
