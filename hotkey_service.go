@@ -245,23 +245,37 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 	return nil
 }
 
-// Stop signals that the app is shutting down, cancels the listen goroutine,
-// and sets the shuttingDown flag so defers skip the CGo Unregister call.
-// It then waits up to 200ms for the goroutine to actually exit, ensuring no
-// CGo callbacks are in-flight when runtime.Quit() triggers Cocoa teardown.
+// Stop signals that the app is shutting down.
+// It explicitly calls backend.Unregister() BEFORE cancelling the goroutine
+// context, so the GCD/NSEvent callback block is removed while the Cocoa
+// event loop is still alive. This prevents a workq crash when Cocoa tears
+// down the GCD work queue while our monitor block is still registered.
+// It then waits up to 200ms for the goroutine to exit before returning,
+// ensuring no CGo callbacks are in-flight when runtime.Quit() runs.
 func (s *HotkeyService) Stop() {
 	s.shuttingDown.Store(true)
+
 	s.mu.Lock()
+	backend := s.backend
 	doneCh := s.doneCh
 	if s.cancel != nil {
-		s.cancel()
+		s.cancel() // unblocks goroutine's select
 	}
 	s.mu.Unlock()
 
+	// Unregister NOW, while the Cocoa event loop is still running.
+	// The goroutine defer will skip its own Unregister() since shuttingDown is set.
+	if backend != nil {
+		if err := backend.Unregister(); err != nil {
+			log.Printf("hotkey: Unregister in Stop() returned: %v", err)
+		}
+	}
+
+	// Wait for the goroutine to acknowledge cancellation and fully exit.
 	if doneCh != nil {
 		select {
 		case <-doneCh:
-			// goroutine exited cleanly
+			// clean exit
 		case <-time.After(200 * time.Millisecond):
 			log.Printf("hotkey: Stop() timed out waiting for goroutine to exit")
 		}
