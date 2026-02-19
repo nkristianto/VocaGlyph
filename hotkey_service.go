@@ -29,10 +29,11 @@ type hotkeyBackend interface {
 // The hotkey.Hotkey is created lazily in Register() to avoid spawning CGo
 // goroutines at construction time — which would leak into unit tests.
 type realHotkeyBackend struct {
-	hk    *hotkey.Hotkey
-	mods  []hotkey.Modifier
-	key   hotkey.Key
-	keyCh chan struct{} // buffered relay; filled once in Register()
+	hk        *hotkey.Hotkey
+	mods      []hotkey.Modifier
+	key       hotkey.Key
+	keyCh     chan struct{} // buffered relay; filled once in Register()
+	closeOnce sync.Once     // guards close(keyCh) to prevent double-close panic
 }
 
 func newRealBackend() *realHotkeyBackend {
@@ -51,6 +52,10 @@ func newRealBackendFromCombo(combo string) (*realHotkeyBackend, error) {
 func (r *realHotkeyBackend) Register() error {
 	r.hk = hotkey.New(r.mods, r.key)
 	if err := r.hk.Register(); err != nil {
+		// Clean up any CGo/OS-level state created by hotkey.New() to prevent
+		// goroutine leaks and panics when the abandoned object is GC'd.
+		_ = r.hk.Unregister()
+		r.hk = nil
 		return ErrHotkeyConflict
 	}
 	// Create a buffered relay channel and pump events into it.
@@ -64,7 +69,8 @@ func (r *realHotkeyBackend) Register() error {
 			default: // drop if buffer full (rapid presses)
 			}
 		}
-		close(r.keyCh) // signal downstream that hk is gone
+		// close only once — prevents panic if Unregister races with a second close
+		r.closeOnce.Do(func() { close(r.keyCh) })
 	}()
 	return nil
 }
