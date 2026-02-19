@@ -143,15 +143,18 @@ function HotkeyCapture({ current, onChange }) {
     }, []);
 
     const applyCombo = useCallback((combo) => {
+        setErrorMsg(null); // clear any previous error when trying
         onChange(combo)
-            .then(() => { setMode('idle'); setErrorMsg(null); })
+            .then(() => { setMode('idle'); })
             .catch(() => {
-                setMode('idle');
+                // Stay in capture mode so user can immediately press another key.
+                // Show a concise inline error; add macOS hint only for ctrl+space.
+                const isSpace = combo.includes('space');
                 setErrorMsg(
-                    `"${format(combo)}" is taken by macOS or another app.\n` +
-                    'To free ⌃Space: System Preferences → Keyboard → Shortcuts → Input Sources → uncheck shortcuts.'
+                    `"${format(combo)}" is taken.` +
+                    (isSpace ? ' Free it in System Preferences → Keyboard → Shortcuts.' : ' Try a different combo.')
                 );
-                setTimeout(() => setErrorMsg(null), 6000);
+                setMode('capture'); // keep listening for next attempt
             });
     }, [onChange, format]);
 
@@ -161,7 +164,7 @@ function HotkeyCapture({ current, onChange }) {
         e.preventDefault();
         e.stopPropagation();
 
-        if (e.key === 'Escape') { setMode('idle'); return; }
+        if (e.key === 'Escape') { setMode('idle'); setErrorMsg(null); return; }
         if (['Control', 'Meta', 'Alt', 'Shift'].includes(e.key)) return;
 
         const parts = [];
