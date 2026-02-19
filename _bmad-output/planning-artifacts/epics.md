@@ -558,3 +558,81 @@ So that my dictation is accurately transcribed in my preferred language.
 **Given** the user selects "Auto"
 **When** a transcription runs
 **Then** whisper.cpp detects the spoken language automatically
+
+---
+
+## Story 7: Menu Bar Shell Completion + Settings Panel (Combined)
+
+_This story addresses two gaps discovered during implementation: (1) the app still shows in the Dock and starts with the window visible instead of true menu bar agent behaviour; (2) there is no settings UI or config persistence despite the epics calling for it. These are delivered together as a single implementation slice._
+
+**FRs covered:** FR23 (no Dock icon), FR19 (model selection), FR20 (language selection), FR21 (settings persist), Story 6.1 prefix
+
+---
+
+### Story 7.1: True macOS Menu Bar Agent Mode
+
+As a user,
+I want the app to live exclusively in the macOS menu bar with a mic icon and no Dock presence,
+So that it behaves like a native menu bar utility and doesn't clutter my workspace.
+
+**Acceptance Criteria:**
+
+**Given** the app is launched
+**When** it initialises
+**Then** no Dock icon appears (`LSUIElement` pattern via `mac.ActivationPolicyAccessory`) and the window starts hidden
+
+**Given** the app is running
+**When** the user looks at the right side of their menu bar
+**Then** a microphone icon (template PNG, adapts to light/dark mode) is visible
+
+**Given** the systray icon is visible
+**When** the user clicks it
+**Then** the popover window appears at the current mouse position (show/hide toggle)
+
+**Given** the popover window is open
+**When** the user clicks elsewhere or the window loses focus
+**Then** the window hides cleanly without quitting the app
+
+**Given** the user right-clicks or uses the systray menu
+**When** they select "Quit"
+**Then** the app exits cleanly and the menu bar icon disappears
+
+---
+
+### Story 7.2: Settings Panel — Model & Language
+
+As a user,
+I want to select the active Whisper model size and transcription language from the popover settings section,
+So that I can tune accuracy versus speed and dictate in my preferred language.
+
+**Acceptance Criteria:**
+
+**Given** the popover is open
+**When** the user looks at the Settings section
+**Then** they see a 3-tab model picker: Tiny · Base · Small, with the current active model highlighted
+
+**Given** the user taps a different model tab
+**When** that model's `.bin` file exists locally
+**Then** WhisperService reloads with the new model immediately (no restart required)
+
+**Given** the user taps a model that is not yet downloaded
+**When** the tab is selected
+**Then** a "Not downloaded" indicator is shown and recording is disabled until a valid model is active
+
+**Given** the popover settings section is visible
+**When** the user opens the Language dropdown
+**Then** they can choose from: Auto, English, Spanish, French, German, Japanese
+
+**Given** the user changes the language
+**When** the change is saved
+**Then** the next transcription uses that language parameter via `ctx.SetLanguage()`
+
+**Given** the user changes any setting
+**When** the change occurs
+**Then** it is persisted to `~/Library/Application Support/voice-to-text/config.json` immediately
+
+**Given** the app restarts after a settings change
+**When** it initialises
+**Then** all previous settings are restored from `config.json`
+
+---

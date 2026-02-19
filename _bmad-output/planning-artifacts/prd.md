@@ -45,7 +45,9 @@ The pragmatic technology choice is the differentiator: Wails + Go sits at the op
 | **Context** | Greenfield |
 | **Primary User** | Solo developer (personal tool, potential open-source sharing) |
 | **Reference Apps** | VoiceInk, ParaSpeech |
-| **Tech Stack** | Wails, Go, whisper.cpp, React/HTML/JS |
+| **Tech Stack** | Wails v2, Go 1.22+, whisper.cpp (Metal GPU via CGo), React/Vite, PortAudio |
+| **OS Integration** | Global hotkey via CGo `CGEventTap`; paste via `osascript`; clipboard via `pbcopy` |
+| **Storage** | Models + config at `~/.voice-to-text/`; launch-at-login via launchd plist |
 
 ---
 
@@ -219,10 +221,13 @@ Not applicable — this is a personal tool with no commercial intent for the MVP
 
 ### Application Lifecycle
 
-- FR23: Application runs as a macOS menu bar app with no Dock icon
-- FR24: Application can be configured to launch at login
-- FR25: User can quit the application from the menu bar icon menu
+- FR23: Application runs as a macOS menu bar app with no Dock icon (`mac.ActivationPolicyAccessory` + `getlantern/systray` for NSStatusItem)
+- FR24: Application can be configured to launch at login (launchd plist via `LoginItemService`)
+- FR25: User can quit the application from the systray icon menu or via ⌘Q shortcut
 - FR26: Application initialises and is ready for dictation within 2 seconds of launch
+
+> [!NOTE]
+> Story 7 (combined Menu Bar Shell + Settings Panel) implements FR23 (true menu bar agent mode — previously only partially implemented) and partial FR19/FR20/FR21.
 
 ---
 

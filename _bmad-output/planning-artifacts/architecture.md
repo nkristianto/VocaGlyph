@@ -78,10 +78,11 @@ wails init -n voice-to-text -t react
 | **Whisper Integration** | `github.com/ggerganov/whisper.cpp` Go bindings (CGo) | Official bindings; best latency; Core ML support on Apple Silicon |
 | **Whisper Acceleration** | Core ML (`-DWHISPER_COREML=1`) + Metal | Offloads to Apple Neural Engine; critical for < 500ms target |
 | **Audio Capture** | `github.com/gordonklaus/portaudio` (Go bindings) | Cross-platform audio I/O; battle-tested; supports PortAudio on macOS |
-| **Global Hotkey** | `github.com/micmonay/keybd_event` or `robotgo` | System-wide hotkey without CGo complexity; evaluate both |
-| **Paste-to-App** | `osascript` subprocess → CGo Accessibility API fallback | `osascript` is simpler; CGo AX API for precision; detect failure and fallback to clipboard |
-| **Settings Storage** | JSON file in `~/Library/Application Support/voice-to-text/` | Simple, transparent, no database needed for a single-user tool |
-| **Model Storage** | `~/Library/Application Support/voice-to-text/models/` | Standard macOS app data location; survives app updates |
+| **Global Hotkey** | Custom CGo `CGEventTap` bridge (`cgo_hotkey.go`) | `robotgo`/`keybd_event` both had CGo thread conflicts with Wails; custom bridge avoids deadlocks |
+| **Paste-to-App** | `osascript` subprocess (primary) → `pbcopy` (fallback) | `osascript` is simpler; `pbcopy` clipboard fallback via stdin pipe is deterministic |
+| **Settings Storage** | JSON file in `~/.voice-to-text/config.json` | Simple, transparent, no database needed for a single-user tool |
+| **Model Storage** | `~/.voice-to-text/models/` | Mirrors whisper.cpp convention; survives app updates |
+| **Menu Bar Icon** | `github.com/getlantern/systray` | Provides NSStatusItem; runs after Wails startup to avoid Cocoa run-loop conflicts |
 
 ---
 
@@ -136,23 +137,26 @@ wails init -n voice-to-text -t react
 ```
 Main Goroutine (Wails runtime)
 │
-├── HotkeyManager goroutine
-│     └── sends → recordChan (chan RecordEvent)
+├── HotkeyService goroutine (CGEventTap, C thread → Go channel)
+│     └── sends toggle event → onHotkeyTriggered() → Wails EventsEmit
 │
-├── AudioService goroutine
-│     ├── reads ← recordChan
-│     ├── captures PCM to audioBuffer ([]float32)
-│     └── sends → whisperChan (chan AudioBuffer)
+├── AudioService goroutine (PortAudio blocking stream)
+│     ├── captures PCM → RingBuffer ([]float32, 30s)
+│     └── on stop → seals buffer → whisperCh (chan []float32, buffered 4)
 │
 ├── WhisperService goroutine
-│     ├── reads ← whisperChan
-│     ├── runs inference (blocking CGo — isolated goroutine)
-│     └── sends → resultChan (chan TranscriptionResult)
+│     ├── reads ← whisperCh
+│     ├── runs CGo libwhisper.a inference (Metal GPU)
+│     ├── filters hallucination tags ([BLANK_AUDIO], (noise), etc.)
+│     └── calls onResult(text) → OutputService.Send()
 │
-└── OutputService goroutine
-      ├── reads ← resultChan
-      ├── attempts paste via osascript subprocess
-      └── on failure → clipboard + Wails EventEmit("notification")
+├── OutputService (inline, called from WhisperService goroutine)
+│     ├── Paste(text) via osascript keystroke
+│     └── on failure → CopyToClipboard(text) via pbcopy + EventsEmit("paste:fallback")
+│
+└── SystrayService goroutine (getlantern/systray, OS thread locked)
+      ├── sets mic icon (template PNG)
+      └── Show/Hide menu item → app.ToggleWindow()
 ```
 
 **Rules:**
@@ -227,16 +231,16 @@ if err != nil {
 
 ```json
 {
-  "hotkey": "ctrl+space",
   "model": "base",
-  "language": "en",
-  "launchAtLogin": false,
-  "outputMode": "paste"
+  "language": "en"
 }
 ```
 
-Stored at: `~/Library/Application Support/voice-to-text/config.json`
-Models stored at: `~/Library/Application Support/voice-to-text/models/<name>.bin`
+> [!NOTE]
+> `launchAtLogin` and `hotkey` are managed separately by the OS (launchd plist) and the HotkeyService respectively, not stored in config.json at runtime.
+
+Stored at: `~/.voice-to-text/config.json`
+Models stored at: `~/.voice-to-text/models/<name>.bin`
 
 ---
 
@@ -264,7 +268,10 @@ codesign --deep --force --sign "Developer ID Application: ..." voice-to-text.app
 | ADR-1 | Wails v2 over Electron | Electron | Chromium bloat; 200MB+ baseline RAM |
 | ADR-2 | Wails v2 over Tauri | Tauri | Go > Rust for learning curve |
 | ADR-3 | whisper.cpp CGo bindings | subprocess `whisper-cli` | subprocess adds ~50ms IPC overhead per inference |
-| ADR-4 | Core ML acceleration | CPU-only | Mandatory for < 500ms on base model |
-| ADR-5 | `osascript` paste | AX API CGo | Simpler; no additional CGo complexity; fallback if needed |
-| ADR-6 | JSON config file | SQLite, plist | Simplest; human-readable; no ORM needed |
-| ADR-7 | PortAudio for audio | AVFoundation CGo | PortAudio has Go bindings; AVFoundation would need full CGo bridge |
+| ADR-4 | Metal GPU acceleration (`GGML_METAL=1`) | CPU-only | Mandatory for <500ms on base model; Core ML disabled — Metal is sufficient |
+| ADR-5 | `osascript` paste + `pbcopy` fallback | AX API CGo | Simpler; no additional CGo complexity; pbcopy fallback is deterministic |
+| ADR-6 | JSON config at `~/.voice-to-text/config.json` | SQLite, plist | Simplest; human-readable; mirrors whisper.cpp model path convention |
+| ADR-7 | PortAudio **blocking** stream | PortAudio callback stream | Callback runs on C thread → goroutine panics; blocking stream is Go-safe |
+| ADR-8 | Custom CGo `CGEventTap` hotkey bridge | `robotgo`, `keybd_event` | Third-party libs both caused CGo thread conflicts with Wails Cocoa run loop |
+| ADR-9 | `getlantern/systray` for menu bar icon | Native NSStatusItem CGo | systray library handles Cocoa run-loop internally; starts safely post-Wails startup |
+| ADR-10 | Hallucination tag filter in `WhisperService` | Pass all text to UI | whisper.cpp emits `[BLANK_AUDIO]`, `(noise)` etc for silence; filter prevents spurious pastes |
