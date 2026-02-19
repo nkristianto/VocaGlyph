@@ -18,25 +18,23 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
-	app.SetHotkeyService(NewHotkeyService()) // inject real hotkey service
-	app.SetAudioService(NewAudioService())   // inject real audio service
+	app.SetHotkeyService(NewHotkeyService())
+	app.SetAudioService(NewAudioService())
 
-	// Inject whisper transcription service.
-	// Model must be downloaded first: see README or Makefile.
+	// Load config → pick model path from persisted preference.
+	cfgSvc := NewConfigService()
+	app.SetConfigService(cfgSvc)
+	cfg := cfgSvc.Load()
 	home, _ := os.UserHomeDir()
-	modelPath := home + "/.voice-to-text/models/ggml-base.en.bin"
+	modelPath := home + "/.voice-to-text/models/ggml-" + cfg.Model + ".en.bin"
 	app.SetWhisperService(NewWhisperService(modelPath))
-	app.SetOutputService(NewOutputService()) // osascript paste + pbcopy fallback
+	app.SetOutputService(NewOutputService())
 
-	// Application menu (File / Edit style top-bar entries).
-	// NOTE: A true clickable NSStatusItem (right-side menu bar icon) requires
-	// a CGo Objective-C bridge — tracked as Story 1.2.
-	// This menu provides keyboard-shortcut access to Settings and Quit
-	// while the window is focused.
+	// Application menu — keyboard shortcuts while window is focused.
 	appMenu := menu.NewMenu()
 	fileMenu := appMenu.AddSubmenu("voice-to-text")
-	fileMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
-		app.ShowWindow()
+	fileMenu.AddText("Show / Hide", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+		app.ToggleWindow()
 	})
 	fileMenu.AddSeparator()
 	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
@@ -46,15 +44,13 @@ func main() {
 	err := wails.Run(&options.App{
 		Title:  "voice-to-text",
 		Width:  320,
-		Height: 290,
+		Height: 320,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 18, G: 18, B: 18, A: 0},
 		OnStartup:        app.startup,
-		Bind: []interface{}{
-			app,
-		},
+		Bind:             []interface{}{app},
 		Mac: &mac.Options{
 			TitleBar:             mac.TitleBarHiddenInset(),
 			Appearance:           mac.NSAppearanceNameDarkAqua,
@@ -65,11 +61,8 @@ func main() {
 				Message: "A fast, private, offline dictation tool.",
 			},
 		},
-		// Window is visible on launch during dev/Story 1.1.
-		// Story 1.2 will add the native NSStatusItem via CGo so the window
-		// starts hidden and is shown only via the menu bar icon.
-		StartHidden:       false,
-		HideWindowOnClose: true,
+		StartHidden:       true, // window hidden at launch; systray icon reveals it
+		HideWindowOnClose: true, // X button hides, doesn't quit
 		Menu:              appMenu,
 	})
 

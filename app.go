@@ -30,6 +30,7 @@ type whisperRunner interface {
 	Load() error
 	Start(whisperCh <-chan []float32, onResult func(string))
 	IsLoaded() bool
+	Reload(modelPath string) error
 }
 
 // outputRunner is the minimal interface the App needs from OutputService.
@@ -54,6 +55,8 @@ type App struct {
 	whisperCh     chan []float32 // sealed PCM handed to Story 3 transcription
 	whisper       whisperRunner  // nil in unit tests; injected by main.go
 	output        outputRunner   // nil in unit tests; injected by main.go
+	config        *ConfigService // nil in unit tests; injected by main.go
+	windowVisible bool           // tracks whether the popover window is currently shown
 }
 
 // NewApp creates a new App application struct.
@@ -83,12 +86,19 @@ func (a *App) SetWhisperService(ws whisperRunner) { a.whisper = ws }
 // SetOutputService injects the text output service (called by main.go before wails.Run).
 func (a *App) SetOutputService(os outputRunner) { a.output = os }
 
+// SetConfigService injects the config persistence service (called by main.go before wails.Run).
+func (a *App) SetConfigService(cs *ConfigService) { a.config = cs }
+
 // startup is called by Wails when the runtime is ready.
 func (a *App) startup(ctx context.Context) {
 	a.mu.Lock()
 	a.ctx = ctx
 	a.mu.Unlock()
 	a.once.Do(func() { close(a.startupCh) })
+
+	// Launch systray icon (mic) in menu bar after Wails/Cocoa is running.
+	// HideFromDock() is called inside onSystrayReady on the Cocoa thread.
+	go StartSystray(a)
 
 	// Start global hotkey listener — only if a service has been injected.
 	if a.hotkeys != nil {
@@ -196,6 +206,25 @@ func (a *App) ShowWindow() {
 	go func() {
 		ctx := a.waitForStartup()
 		runtime.WindowShow(ctx)
+		a.mu.Lock()
+		a.windowVisible = true
+		a.mu.Unlock()
+	}()
+}
+
+// ToggleWindow shows the window if hidden, or hides it if visible.
+func (a *App) ToggleWindow() {
+	go func() {
+		ctx := a.waitForStartup()
+		a.mu.Lock()
+		if a.windowVisible {
+			runtime.WindowHide(ctx)
+			a.windowVisible = false
+		} else {
+			runtime.WindowShow(ctx)
+			a.windowVisible = true
+		}
+		a.mu.Unlock()
 	}()
 }
 
@@ -205,6 +234,40 @@ func (a *App) Quit() {
 		ctx := a.waitForStartup()
 		runtime.Quit(ctx)
 	}()
+}
+
+// GetConfig returns the current persisted configuration.
+func (a *App) GetConfig() Config {
+	if a.config == nil {
+		return defaultConfig()
+	}
+	return a.config.Load()
+}
+
+// SetModel switches the active Whisper model, reloads it, and persists the change.
+func (a *App) SetModel(model string) error {
+	if a.config == nil || a.whisper == nil {
+		return nil
+	}
+	home, _ := os.UserHomeDir()
+	modelPath := home + "/.voice-to-text/models/ggml-" + model + ".en.bin"
+	if err := a.whisper.Reload(modelPath); err != nil {
+		return err
+	}
+	cfg := a.config.Load()
+	cfg.Model = model
+	return a.config.Save(cfg)
+}
+
+// SetLanguage updates the transcription language and persists the change.
+// The new language takes effect on the next model Reload or recording session.
+func (a *App) SetLanguage(lang string) error {
+	if a.config == nil {
+		return nil
+	}
+	cfg := a.config.Load()
+	cfg.Language = lang
+	return a.config.Save(cfg)
 }
 
 // GetStatus returns the current app status displayed in the UI.

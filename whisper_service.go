@@ -158,6 +158,18 @@ func (s *WhisperService) IsLoaded() bool {
 	return s.loaded
 }
 
+// Reload closes the current model and loads a new one from modelPath.
+// Used when the user switches models in Settings. Safe to call at runtime;
+// audio queued in whisperCh will be processed with the new model once loaded.
+func (s *WhisperService) Reload(modelPath string) error {
+	s.loaded = false
+	if err := s.backend.Close(); err != nil {
+		log.Printf("whisper: reload: close error (non-fatal): %v", err)
+	}
+	s.modelPath = modelPath
+	return s.Load()
+}
+
 // Close releases model resources.
 func (s *WhisperService) Close() error {
 	return s.backend.Close()

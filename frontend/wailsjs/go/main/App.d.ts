@@ -18,6 +18,8 @@ export function SetHotkeyService(arg1:main.hotkeyStarter):Promise<void>;
 
 export function SetLaunchAtLogin(arg1:boolean):Promise<void>;
 
+export function SetOutputService(arg1:main.outputRunner):Promise<void>;
+
 export function SetWhisperService(arg1:main.whisperRunner):Promise<void>;
 
 export function ShowWindow():Promise<void>;

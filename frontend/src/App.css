@@ -642,4 +642,86 @@
   padding: 0 3px;
 }
 
+/* ── Settings Panel (Story 7) ─────────────────────────── */
+
+.vtt-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.vtt-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vtt-settings__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 56px;
+}
+
+/* Model tab buttons */
+.vtt-model-picker {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px;
+}
+
+.vtt-model-btn {
+  flex: 1;
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+
+.vtt-model-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vtt-text);
+}
+
+.vtt-model-btn--active {
+  background: rgba(139, 92, 246, 0.25);
+  color: var(--vtt-accent-violet, #a78bfa);
+  font-weight: 600;
+}
+
+/* Language dropdown */
+.vtt-lang-select {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px 20px 3px 6px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath stroke='%236b7280' stroke-width='1.5' fill='none' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  transition: border-color 150ms;
+}
+
+.vtt-lang-select:hover,
+.vtt-lang-select:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+  outline: none;
 }

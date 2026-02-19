@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings } from '../wailsjs/go/main/App';
+import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
@@ -69,6 +69,55 @@ function ClipboardToast() {
     );
 }
 
+// ── SettingsPanel ─────────────────────────────────────────
+// Model picker + language selector, collapsed below the divider.
+const MODELS = ['tiny', 'base', 'small'];
+const LANGUAGES = [
+    { value: 'en', label: 'English' },
+    { value: 'auto', label: 'Auto-detect' },
+    { value: 'es', label: 'Spanish' },
+    { value: 'fr', label: 'French' },
+    { value: 'de', label: 'German' },
+    { value: 'ja', label: 'Japanese' },
+];
+
+function SettingsPanel({ config, onModelChange, onLanguageChange }) {
+    return (
+        <div className="vtt-settings">
+            <div className="vtt-settings__row">
+                <span className="vtt-settings__label">Model</span>
+                <div className="vtt-model-picker" role="group" aria-label="Model size">
+                    {MODELS.map((m) => (
+                        <button
+                            key={m}
+                            id={`vtt-model-${m}`}
+                            className={`vtt-model-btn${config.model === m ? ' vtt-model-btn--active' : ''}`}
+                            onClick={() => onModelChange(m)}
+                            aria-pressed={config.model === m}
+                        >
+                            {m}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="vtt-settings__row">
+                <span className="vtt-settings__label">Language</span>
+                <select
+                    id="vtt-language-select"
+                    className="vtt-lang-select"
+                    value={config.language}
+                    onChange={(e) => onLanguageChange(e.target.value)}
+                    aria-label="Transcription language"
+                >
+                    {LANGUAGES.map((l) => (
+                        <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                </select>
+            </div>
+        </div>
+    );
+}
+
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
@@ -78,12 +127,26 @@ function App() {
     const [elapsedSecs, setElapsedSecs] = useState(0);
     const [transcriptionText, setTranscriptionText] = useState('');
     const [showClipboardToast, setShowClipboardToast] = useState(false);
+    const [config, setConfig] = useState({ model: 'base', language: 'en' });
 
     // Load initial values from Go backend
     useEffect(() => {
         GetStatus().then(setStatusText).catch(() => setStatusText('Ready to dictate'));
         GetLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
+        GetConfig().then(setConfig).catch(() => setConfig({ model: 'base', language: 'en' }));
     }, []);
+
+    function handleModelChange(model) {
+        SetModel(model)
+            .then(() => setConfig((c) => ({ ...c, model })))
+            .catch((err) => console.error('SetModel failed:', err));
+    }
+
+    function handleLanguageChange(language) {
+        SetLanguage(language)
+            .then(() => setConfig((c) => ({ ...c, language })))
+            .catch((err) => console.error('SetLanguage failed:', err));
+    }
 
     // Listen for hotkey + audio events from Go backend
     useEffect(() => {
@@ -223,6 +286,12 @@ function App() {
                         <span className="vtt-toggle__track" />
                     </span>
                 </label>
+
+                <SettingsPanel
+                    config={config}
+                    onModelChange={handleModelChange}
+                    onLanguageChange={handleLanguageChange}
+                />
 
                 {/* HUD pill — overlays bottom of card while recording */}
                 {appState === APP_STATES.RECORDING && (
