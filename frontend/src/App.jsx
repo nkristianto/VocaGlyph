@@ -303,7 +303,10 @@ function App() {
 
     function handleHotkeyChange(combo) {
         return SetHotkey(combo)
-            .then(() => setConfig((c) => ({ ...c, hotkey: combo })))
+            .then(() => {
+                setConfig((c) => ({ ...c, hotkey: combo }));
+                setHotkeyConflict(false); // clear the conflict banner on success
+            })
             // Reject so HotkeyCapture can show error flash
             .catch((err) => { console.error('SetHotkey failed:', err); return Promise.reject(err); });
     }
