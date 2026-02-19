@@ -584,3 +584,62 @@
     transform: scaleX(0);
   }
 }
+
+/* ── Clipboard Toast (Epic 4) ───────────────────────────── */
+/* Shown when osascript paste fails — fallback to clipboard. */
+
+@keyframes vtt-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.vtt-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--vtt-space-2);
+  padding: var(--vtt-space-1) var(--vtt-space-3);
+
+  background: rgba(30, 23, 8, 0.96);
+  border: 1px solid rgba(234, 179, 8, 0.50);
+  /* amber */
+  border-radius: var(--vtt-radius-pill);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  animation: vtt-toast-in 200ms ease both;
+  z-index: 20;
+  white-space: nowrap;
+}
+
+.vtt-toast__icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.vtt-toast__text {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: #fbbf24;
+  /* amber-400 */
+  letter-spacing: 0.02em;
+}
+
+.vtt-toast__text kbd {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.30);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+}

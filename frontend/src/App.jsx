@@ -58,6 +58,17 @@ function TranscriptionOverlay({ text }) {
     );
 }
 
+// ── ClipboardToast ────────────────────────────────────────
+// Brief amber banner when paste falls back to clipboard.
+function ClipboardToast() {
+    return (
+        <div id="vtt-toast" className="vtt-toast" role="alert">
+            <span className="vtt-toast__icon">📋</span>
+            <span className="vtt-toast__text">Copied to clipboard — paste with <kbd>⌘V</kbd></span>
+        </div>
+    );
+}
+
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
@@ -66,6 +77,7 @@ function App() {
     const [micDenied, setMicDenied] = useState(false);
     const [elapsedSecs, setElapsedSecs] = useState(0);
     const [transcriptionText, setTranscriptionText] = useState('');
+    const [showClipboardToast, setShowClipboardToast] = useState(false);
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -98,11 +110,17 @@ function App() {
             setAppState(APP_STATES.PROCESSING);
         });
 
+        const unsubFallback = EventsOn('paste:fallback', () => {
+            setShowClipboardToast(true);
+            setTimeout(() => setShowClipboardToast(false), 2000);
+        });
+
         return () => {
             unsubTrigger();
             unsubConflict();
             unsubMicDenied();
             unsubTranscription();
+            unsubFallback();
         };
     }, []);
 
@@ -215,6 +233,9 @@ function App() {
                 {appState === APP_STATES.PROCESSING && transcriptionText && (
                     <TranscriptionOverlay text={transcriptionText} />
                 )}
+
+                {/* Clipboard fallback toast — shown briefly after paste failure */}
+                {showClipboardToast && <ClipboardToast />}
             </div>
         </>
     );

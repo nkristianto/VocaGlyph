@@ -26,6 +26,7 @@ func main() {
 	home, _ := os.UserHomeDir()
 	modelPath := home + "/.voice-to-text/models/ggml-base.en.bin"
 	app.SetWhisperService(NewWhisperService(modelPath))
+	app.SetOutputService(NewOutputService()) // osascript paste + pbcopy fallback
 
 	// Application menu (File / Edit style top-bar entries).
 	// NOTE: A true clickable NSStatusItem (right-side menu bar icon) requires

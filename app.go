@@ -32,6 +32,11 @@ type whisperRunner interface {
 	IsLoaded() bool
 }
 
+// outputRunner is the minimal interface the App needs from OutputService.
+type outputRunner interface {
+	Send(text string, onFallback func())
+}
+
 // App is the main application struct.
 // ctx is guarded by mu. startupCh is closed once startup() fires so that
 // ShowWindow/Quit callers that arrive before Wails is ready can wait.
@@ -48,6 +53,7 @@ type App struct {
 	audioCancelFn context.CancelFunc
 	whisperCh     chan []float32 // sealed PCM handed to Story 3 transcription
 	whisper       whisperRunner  // nil in unit tests; injected by main.go
+	output        outputRunner   // nil in unit tests; injected by main.go
 }
 
 // NewApp creates a new App application struct.
@@ -73,6 +79,9 @@ func (a *App) SetAudioService(as audioStarter) { a.audio = as }
 
 // SetWhisperService injects the whisper transcription service (called by main.go before wails.Run).
 func (a *App) SetWhisperService(ws whisperRunner) { a.whisper = ws }
+
+// SetOutputService injects the text output service (called by main.go before wails.Run).
+func (a *App) SetOutputService(os outputRunner) { a.output = os }
 
 // startup is called by Wails when the runtime is ready.
 func (a *App) startup(ctx context.Context) {
@@ -111,8 +120,14 @@ func (a *App) startup(ctx context.Context) {
 				a.mu.RLock()
 				c := a.ctx
 				a.mu.RUnlock()
-				log.Printf("transcription:result %q", text)
+				// Emit result to UI first so the overlay appears immediately.
 				runtime.EventsEmit(c, "transcription:result", text)
+				// Then attempt to paste; fall back to clipboard if needed.
+				if a.output != nil {
+					a.output.Send(text, func() {
+						runtime.EventsEmit(c, "paste:fallback")
+					})
+				}
 			})
 		}
 	}
