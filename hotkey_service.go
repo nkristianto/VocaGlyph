@@ -129,12 +129,14 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 
 	listenCtx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
-	keydown := s.backend.Keydown()
+	curBackend := s.backend // capture NOW — prevents Reregister() swap from affecting this defer
+	curCombo := s.combo
+	keydown := curBackend.Keydown()
 	go func() {
 		defer func() {
-			s.backend.Unregister() //nolint:errcheck
+			curBackend.Unregister() //nolint:errcheck
 			s.registered.Store(false)
-			log.Printf("hotkey: %s unregistered", s.combo)
+			log.Printf("hotkey: %s unregistered", curCombo)
 		}()
 		for {
 			select {
@@ -144,7 +146,7 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 				if !ok {
 					return
 				}
-				log.Printf("hotkey: %s triggered", s.combo)
+				log.Printf("hotkey: %s triggered", curCombo)
 				onTrigger()
 			}
 		}
