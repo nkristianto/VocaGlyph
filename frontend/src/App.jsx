@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin } from '../wailsjs/go/main/App';
+import { EventsOn } from '@wailsapp/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
@@ -15,6 +16,7 @@ function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
     const [launchAtLogin, setLaunchAtLogin] = useState(false);
+    const [hotkeyConflict, setHotkeyConflict] = useState(false);
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -22,10 +24,35 @@ function App() {
         GetLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
     }, []);
 
+    // Listen for hotkey events from Go backend
+    useEffect(() => {
+        const unsubTrigger = EventsOn('hotkey:triggered', () => {
+            setAppState((prev) => {
+                if (prev === APP_STATES.IDLE) return APP_STATES.RECORDING;
+                if (prev === APP_STATES.RECORDING) return APP_STATES.PROCESSING;
+                return APP_STATES.IDLE;
+            });
+        });
+
+        const unsubConflict = EventsOn('hotkey:conflict', () => {
+            setHotkeyConflict(true);
+        });
+
+        return () => {
+            unsubTrigger();
+            unsubConflict();
+        };
+    }, []);
+
     // Derive status label from app state
     useEffect(() => {
         if (appState === APP_STATES.RECORDING) setStatusText('Recording…');
-        if (appState === APP_STATES.PROCESSING) setStatusText('Transcribing…');
+        if (appState === APP_STATES.PROCESSING) {
+            setStatusText('Transcribing…');
+            // Auto-return to idle after a short delay (Story 3 will replace this)
+            const t = setTimeout(() => setAppState(APP_STATES.IDLE), 1500);
+            return () => clearTimeout(t);
+        }
         if (appState === APP_STATES.IDLE) {
             GetStatus().then(setStatusText).catch(() => setStatusText('Ready to dictate'));
         }
@@ -35,7 +62,6 @@ function App() {
         const checked = e.target.checked;
         setLaunchAtLogin(checked);
         SetLaunchAtLogin(checked).catch((err) => {
-            // Revert on failure
             setLaunchAtLogin(!checked);
             console.error('SetLaunchAtLogin failed:', err);
         });
@@ -60,10 +86,16 @@ function App() {
                 {statusText}
             </div>
 
-            {/* Hotkey badge */}
-            <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to start recording">
-                {HOTKEY_LABEL} to record
-            </div>
+            {/* Hotkey badge or conflict warning */}
+            {hotkeyConflict ? (
+                <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)' }}>
+                    ⚠ ⌃Space conflict — choose another key
+                </div>
+            ) : (
+                <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to toggle recording">
+                    {HOTKEY_LABEL} to record
+                </div>
+            )}
 
             {/* Settings section */}
             <div className="vtt-divider" />
@@ -81,33 +113,6 @@ function App() {
                     <span className="vtt-toggle__track" />
                 </span>
             </label>
-
-            {/* Developer state switcher — remove in Story 2 when hotkey wired */}
-            {process.env.NODE_ENV === 'development' && (
-                <>
-                    <div className="vtt-divider" />
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        {Object.values(APP_STATES).map((state) => (
-                            <button
-                                key={state}
-                                onClick={() => setAppState(state)}
-                                style={{
-                                    padding: '4px 10px',
-                                    borderRadius: '6px',
-                                    fontSize: '11px',
-                                    fontFamily: 'var(--vtt-font-mono)',
-                                    background: appState === state ? 'var(--vtt-accent-dim)' : 'var(--vtt-bg-surface)',
-                                    border: `1px solid ${appState === state ? 'var(--vtt-accent)' : 'var(--vtt-border)'}`,
-                                    color: appState === state ? 'var(--vtt-accent)' : 'var(--vtt-text-tertiary)',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                {state}
-                            </button>
-                        ))}
-                    </div>
-                </>
-            )}
         </div>
     );
 }
