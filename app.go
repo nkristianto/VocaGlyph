@@ -33,6 +33,7 @@ type whisperRunner interface {
 	Start(whisperCh <-chan []float32, onResult func(string))
 	IsLoaded() bool
 	Reload(modelPath string) error
+	Close() error // must be called before process exit to free Metal GPU resources
 }
 
 // outputRunner is the minimal interface the App needs from OutputService.
@@ -245,11 +246,18 @@ func (a *App) ToggleWindow() {
 func (a *App) Quit() {
 	go func() {
 		ctx := a.waitForStartup()
-		// Stop the hotkey service BEFORE Wails tears down the Cocoa runtime.
-		// This sets shuttingDown=true so the goroutine defer skips the CGo
-		// hk.Unregister() call that would otherwise panic during Cocoa shutdown.
+		// 1. Stop the hotkey service first — calls backend.Unregister() while the
+		//    Cocoa event loop is still alive, then waits for the goroutine to exit.
 		if hs, ok := a.hotkeys.(*HotkeyService); ok {
 			hs.Stop()
+		}
+		// 2. Free the whisper model and Metal GPU resources BEFORE the Go runtime
+		//    calls exit(). If we don't, ggml-metal's C++ static destructor asserts
+		//    that residency sets are empty, crashing with SIGABRT.
+		if a.whisper != nil {
+			if err := a.whisper.Close(); err != nil {
+				log.Printf("quit: whisper.Close() error: %v", err)
+			}
 		}
 		runtime.Quit(ctx)
 	}()
