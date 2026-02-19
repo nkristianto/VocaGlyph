@@ -17,7 +17,8 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
-	app.SetHotkeyService(NewHotkeyService()) // inject real service; keeps CGo goroutines out of unit tests
+	app.SetHotkeyService(NewHotkeyService()) // inject real hotkey service
+	app.SetAudioService(NewAudioService())   // inject real audio service
 
 	// Application menu (File / Edit style top-bar entries).
 	// NOTE: A true clickable NSStatusItem (right-side menu bar icon) requires

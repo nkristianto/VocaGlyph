@@ -17,23 +17,33 @@ type hotkeyStarter interface {
 	IsRegistered() bool
 }
 
+// audioStarter is the minimal interface the App needs from AudioService.
+type audioStarter interface {
+	StartRecording(ctx context.Context) error
+	StopRecording() ([]float32, error)
+	IsRecording() bool
+}
+
 // App is the main application struct.
 // ctx is guarded by mu. startupCh is closed once startup() fires so that
 // ShowWindow/Quit callers that arrive before Wails is ready can wait.
 type App struct {
-	mu         sync.RWMutex
-	ctx        context.Context
-	startupCh  chan struct{}
-	once       sync.Once
-	loginItems *LoginItemService
-	hotkeys    hotkeyStarter // nil in unit tests; real HotkeyService in production
-	hotkeyCtx  context.CancelFunc
+	mu            sync.RWMutex
+	ctx           context.Context
+	startupCh     chan struct{}
+	once          sync.Once
+	loginItems    *LoginItemService
+	hotkeys       hotkeyStarter // nil in unit tests; injected by main.go
+	hotkeyCtx     context.CancelFunc
+	audio         audioStarter    // nil in unit tests; injected by main.go
+	audioCtx      context.Context // cancelled when recording stops
+	audioCancelFn context.CancelFunc
+	whisperCh     chan []float32 // sealed PCM handed to Story 3 transcription
 }
 
 // NewApp creates a new App application struct.
-// hotkeys is intentionally nil — main.go injects a real HotkeyService
-// via SetHotkeyService() before calling wails.Run(), keeping CGo goroutines
-// out of unit tests entirely.
+// audio/hotkeys are nil by default — main.go injects them via Set*() before wails.Run().
+// This keeps CGo goroutines out of unit tests entirely.
 func NewApp() *App {
 	svc, err := NewLoginItemService()
 	if err != nil {
@@ -42,14 +52,15 @@ func NewApp() *App {
 	return &App{
 		startupCh:  make(chan struct{}),
 		loginItems: svc,
-		// hotkeys: nil — injected by main.go via SetHotkeyService()
+		whisperCh:  make(chan []float32, 4), // buffered; Story 3 consumes
 	}
 }
 
 // SetHotkeyService injects the hotkey service (called by main.go before wails.Run).
-func (a *App) SetHotkeyService(hs hotkeyStarter) {
-	a.hotkeys = hs
-}
+func (a *App) SetHotkeyService(hs hotkeyStarter) { a.hotkeys = hs }
+
+// SetAudioService injects the audio service (called by main.go before wails.Run).
+func (a *App) SetAudioService(as audioStarter) { a.audio = as }
 
 // startup is called by Wails when the runtime is ready.
 func (a *App) startup(ctx context.Context) {
@@ -62,18 +73,58 @@ func (a *App) startup(ctx context.Context) {
 	if a.hotkeys != nil {
 		hkCtx, cancel := context.WithCancel(ctx)
 		a.hotkeyCtx = cancel
-		if err := a.hotkeys.Start(hkCtx, func() {
-			a.mu.RLock()
-			defer a.mu.RUnlock()
-			runtime.EventsEmit(a.ctx, "hotkey:triggered")
-		}); err != nil {
+		if err := a.hotkeys.Start(hkCtx, a.onHotkeyTriggered); err != nil {
 			if errors.Is(err, ErrHotkeyConflict) {
-				log.Printf("hotkey: ⌃Space is already registered by another app — using app menu only")
+				log.Printf("hotkey: ⌃Space already registered by another app")
 				runtime.EventsEmit(ctx, "hotkey:conflict")
 			} else {
 				log.Printf("hotkey: failed to register: %v", err)
 			}
 		}
+	}
+}
+
+// onHotkeyTriggered is called from the hotkey goroutine on each ⌃Space press.
+// Toggles recording: idle→start, recording→stop.
+func (a *App) onHotkeyTriggered() {
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+
+	if a.audio == nil {
+		runtime.EventsEmit(ctx, "hotkey:triggered")
+		return
+	}
+
+	if a.audio.IsRecording() {
+		// Stop recording → seal buffer → queue for transcription
+		go func() {
+			pcm, err := a.audio.StopRecording()
+			if err != nil {
+				log.Printf("audio: stop error: %v", err)
+				runtime.EventsEmit(ctx, "audio:error")
+				return
+			}
+			if len(pcm) > 0 {
+				select {
+				case a.whisperCh <- pcm:
+					log.Printf("audio: %d samples queued for transcription", len(pcm))
+				default:
+					log.Printf("audio: whisperCh full — dropping recording")
+				}
+			}
+			runtime.EventsEmit(ctx, "hotkey:triggered") // → processing state in React
+		}()
+	} else {
+		// Start recording
+		recordCtx, cancel := context.WithCancel(ctx)
+		a.audioCancelFn = cancel
+		if err := a.audio.StartRecording(recordCtx); err != nil {
+			log.Printf("audio: start error: %v", err)
+			runtime.EventsEmit(ctx, "audio:error")
+			return
+		}
+		runtime.EventsEmit(ctx, "hotkey:triggered") // → recording state in React
 	}
 }
 
@@ -108,7 +159,7 @@ func (a *App) GetStatus() string {
 
 // GetHotkeyStatus returns the current hotkey registration status.
 func (a *App) GetHotkeyStatus() string {
-	if a.hotkeys.IsRegistered() {
+	if a.hotkeys != nil && a.hotkeys.IsRegistered() {
 		return "registered"
 	}
 	return "unregistered"
