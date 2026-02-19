@@ -12,12 +12,36 @@ const APP_STATES = {
 
 const HOTKEY_LABEL = '⌃Space';
 
+// ── RecordingHUD ─────────────────────────────────────────
+// Floating pill shown while recording is active.
+function RecordingHUD({ elapsedSecs }) {
+    const mm = String(Math.floor(elapsedSecs / 60)).padStart(1, '0');
+    const ss = String(elapsedSecs % 60).padStart(2, '0');
+
+    return (
+        <div className="vtt-hud" role="status" aria-label="Recording in progress">
+            <span className="vtt-hud__dot" />
+            <div className="vtt-hud__wave" aria-hidden="true">
+                <span className="vtt-hud__bar" />
+                <span className="vtt-hud__bar" />
+                <span className="vtt-hud__bar" />
+                <span className="vtt-hud__bar" />
+                <span className="vtt-hud__bar" />
+                <span className="vtt-hud__bar" />
+            </div>
+            <span className="vtt-hud__label">Rec</span>
+            <span id="vtt-hud-timer" className="vtt-hud__timer">{mm}:{ss}</span>
+        </div>
+    );
+}
+
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
     const [launchAtLogin, setLaunchAtLogin] = useState(false);
     const [hotkeyConflict, setHotkeyConflict] = useState(false);
     const [micDenied, setMicDenied] = useState(false);
+    const [elapsedSecs, setElapsedSecs] = useState(0);
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -66,6 +90,16 @@ function App() {
         }
     }, [appState]);
 
+    // Elapsed timer — ticks while recording, resets on idle
+    useEffect(() => {
+        if (appState !== APP_STATES.RECORDING) {
+            setElapsedSecs(0);
+            return;
+        }
+        const t = setInterval(() => setElapsedSecs((s) => s + 1), 1000);
+        return () => clearInterval(t);
+    }, [appState]);
+
     function handleLaunchToggle(e) {
         const checked = e.target.checked;
         setLaunchAtLogin(checked);
@@ -76,68 +110,75 @@ function App() {
     }
 
     return (
-        <div
-            id="App"
-            className={`vtt-popover vtt-state-${appState}`}
-            data-testid="vtt-root"
-        >
-            {/* Mic icon */}
-            <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
-                🎙
+        <>
+            <div
+                id="App"
+                className={`vtt-popover vtt-state-${appState}`}
+                data-testid="vtt-root"
+            >
+                {/* Mic icon */}
+                <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
+                    🎙
+                </div>
+
+                {/* App title */}
+                <div id="vtt-title" className="vtt-title">voice-to-text</div>
+
+                {/* Status text */}
+                <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
+                    {statusText}
+                </div>
+
+                {/* Hotkey badge — or conflict/permission-denied warning */}
+                {micDenied ? (
+                    <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🎙 Microphone access required</span>
+                        <button
+                            id="vtt-open-settings"
+                            onClick={() => OpenSystemSettings().catch(console.error)}
+                            style={{
+                                background: 'none', border: '1px solid var(--vtt-accent)',
+                                color: 'var(--vtt-accent)', borderRadius: '4px',
+                                padding: '2px 6px', fontSize: '10px', cursor: 'pointer',
+                                fontFamily: 'var(--vtt-font-mono)',
+                            }}
+                        >
+                            Open Settings
+                        </button>
+                    </div>
+                ) : hotkeyConflict ? (
+                    <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)' }}>
+                        ⚠ ⌃Space conflict — choose another key
+                    </div>
+                ) : (
+                    <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to toggle recording">
+                        {HOTKEY_LABEL} to record
+                    </div>
+                )}
+
+                {/* Settings section */}
+                <div className="vtt-divider" />
+
+                <label className="vtt-toggle">
+                    <span className="vtt-toggle__label">Launch at login</span>
+                    <span className="vtt-toggle__switch">
+                        <input
+                            id="vtt-launch-at-login"
+                            type="checkbox"
+                            checked={launchAtLogin}
+                            onChange={handleLaunchToggle}
+                            aria-label="Launch at login"
+                        />
+                        <span className="vtt-toggle__track" />
+                    </span>
+                </label>
             </div>
 
-            {/* App title */}
-            <div id="vtt-title" className="vtt-title">voice-to-text</div>
-
-            {/* Status text */}
-            <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
-                {statusText}
-            </div>
-
-            {/* Hotkey badge — or conflict/permission-denied warning */}
-            {micDenied ? (
-                <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>🎙 Microphone access required</span>
-                    <button
-                        id="vtt-open-settings"
-                        onClick={() => OpenSystemSettings().catch(console.error)}
-                        style={{
-                            background: 'none', border: '1px solid var(--vtt-accent)',
-                            color: 'var(--vtt-accent)', borderRadius: '4px',
-                            padding: '2px 6px', fontSize: '10px', cursor: 'pointer',
-                            fontFamily: 'var(--vtt-font-mono)',
-                        }}
-                    >
-                        Open Settings
-                    </button>
-                </div>
-            ) : hotkeyConflict ? (
-                <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)' }}>
-                    ⚠ ⌃Space conflict — choose another key
-                </div>
-            ) : (
-                <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to toggle recording">
-                    {HOTKEY_LABEL} to record
-                </div>
+            {/* HUD pill — visible during recording only */}
+            {appState === APP_STATES.RECORDING && (
+                <RecordingHUD elapsedSecs={elapsedSecs} />
             )}
-
-            {/* Settings section */}
-            <div className="vtt-divider" />
-
-            <label className="vtt-toggle">
-                <span className="vtt-toggle__label">Launch at login</span>
-                <span className="vtt-toggle__switch">
-                    <input
-                        id="vtt-launch-at-login"
-                        type="checkbox"
-                        checked={launchAtLogin}
-                        onChange={handleLaunchToggle}
-                        aria-label="Launch at login"
-                    />
-                    <span className="vtt-toggle__track" />
-                </span>
-            </label>
-        </div>
+        </>
     );
 }
 
