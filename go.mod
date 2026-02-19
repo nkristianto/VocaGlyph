@@ -3,6 +3,7 @@ module voice-to-text
 go 1.23
 
 require (
+	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-20260219151842-21411d81ea73
 	github.com/gordonklaus/portaudio v0.0.0-20260203164431-765aa7dfa631
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.design/x/hotkey v0.4.1
@@ -39,3 +40,5 @@ require (
 )
 
 // replace github.com/wailsapp/wails/v2 v2.11.0 => /Users/nkristianto/go/pkg/mod
+
+replace github.com/ggerganov/whisper.cpp/bindings/go => ../whisper.cpp/bindings/go

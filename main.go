@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -19,6 +20,12 @@ func main() {
 	app := NewApp()
 	app.SetHotkeyService(NewHotkeyService()) // inject real hotkey service
 	app.SetAudioService(NewAudioService())   // inject real audio service
+
+	// Inject whisper transcription service.
+	// Model must be downloaded first: see README or Makefile.
+	home, _ := os.UserHomeDir()
+	modelPath := home + "/.voice-to-text/models/ggml-base.en.bin"
+	app.SetWhisperService(NewWhisperService(modelPath))
 
 	// Application menu (File / Edit style top-bar entries).
 	// NOTE: A true clickable NSStatusItem (right-side menu bar icon) requires

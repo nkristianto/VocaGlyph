@@ -25,6 +25,13 @@ type audioStarter interface {
 	IsRecording() bool
 }
 
+// whisperRunner is the minimal interface the App needs from WhisperService.
+type whisperRunner interface {
+	Load() error
+	Start(whisperCh <-chan []float32, onResult func(string))
+	IsLoaded() bool
+}
+
 // App is the main application struct.
 // ctx is guarded by mu. startupCh is closed once startup() fires so that
 // ShowWindow/Quit callers that arrive before Wails is ready can wait.
@@ -40,6 +47,7 @@ type App struct {
 	audioCtx      context.Context // cancelled when recording stops
 	audioCancelFn context.CancelFunc
 	whisperCh     chan []float32 // sealed PCM handed to Story 3 transcription
+	whisper       whisperRunner  // nil in unit tests; injected by main.go
 }
 
 // NewApp creates a new App application struct.
@@ -63,6 +71,9 @@ func (a *App) SetHotkeyService(hs hotkeyStarter) { a.hotkeys = hs }
 // SetAudioService injects the audio service (called by main.go before wails.Run).
 func (a *App) SetAudioService(as audioStarter) { a.audio = as }
 
+// SetWhisperService injects the whisper transcription service (called by main.go before wails.Run).
+func (a *App) SetWhisperService(ws whisperRunner) { a.whisper = ws }
+
 // startup is called by Wails when the runtime is ready.
 func (a *App) startup(ctx context.Context) {
 	a.mu.Lock()
@@ -81,6 +92,28 @@ func (a *App) startup(ctx context.Context) {
 			} else {
 				log.Printf("hotkey: failed to register: %v", err)
 			}
+		}
+	}
+
+	// Load whisper model — only if a service has been injected.
+	if a.whisper != nil {
+		if err := a.whisper.Load(); err != nil {
+			if errors.Is(err, ErrModelNotFound) {
+				log.Printf("whisper: model missing — download ggml-base.en.bin to ~/.voice-to-text/models/")
+				runtime.EventsEmit(ctx, "model:missing")
+			} else {
+				log.Printf("whisper: load error: %v", err)
+				runtime.EventsEmit(ctx, "model:missing")
+			}
+		} else {
+			// Start consuming whisperCh in background.
+			a.whisper.Start(a.whisperCh, func(text string) {
+				a.mu.RLock()
+				c := a.ctx
+				a.mu.RUnlock()
+				log.Printf("transcription:result %q", text)
+				runtime.EventsEmit(c, "transcription:result", text)
+			})
 		}
 	}
 }
