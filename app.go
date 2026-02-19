@@ -245,6 +245,12 @@ func (a *App) ToggleWindow() {
 func (a *App) Quit() {
 	go func() {
 		ctx := a.waitForStartup()
+		// Stop the hotkey service BEFORE Wails tears down the Cocoa runtime.
+		// This sets shuttingDown=true so the goroutine defer skips the CGo
+		// hk.Unregister() call that would otherwise panic during Cocoa shutdown.
+		if hs, ok := a.hotkeys.(*HotkeyService); ok {
+			hs.Stop()
+		}
 		runtime.Quit(ctx)
 	}()
 }

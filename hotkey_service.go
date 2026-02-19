@@ -89,13 +89,14 @@ func (r *realHotkeyBackend) Keydown() <-chan struct{} {
 
 // HotkeyService manages global hotkey registration for voice-to-text.
 type HotkeyService struct {
-	mu         sync.Mutex
-	backend    hotkeyBackend
-	combo      string // current hotkey combo string e.g. "ctrl+space"
-	registered atomic.Bool
-	parentCtx  context.Context    // root context from Start() — used by Reregister
-	cancel     context.CancelFunc // cancels the listen goroutine
-	onTrigger  func()
+	mu           sync.Mutex
+	backend      hotkeyBackend
+	combo        string // current hotkey combo string e.g. "ctrl+space"
+	registered   atomic.Bool
+	shuttingDown atomic.Bool        // set during app quit; defers skip CGo Unregister
+	parentCtx    context.Context    // root context from Start() — used by Reregister
+	cancel       context.CancelFunc // cancels the listen goroutine
+	onTrigger    func()
 }
 
 // NewHotkeyService creates a HotkeyService backed by the real macOS hotkey API.
@@ -143,7 +144,10 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 			if r := recover(); r != nil {
 				log.Printf("hotkey: recovered panic during Start cleanup (CGo/shutdown race): %v", r)
 			}
-			curBackend.Unregister() //nolint:errcheck
+			// Skip CGo call during app shutdown — the OS cleans up the event monitor.
+			if !s.shuttingDown.Load() {
+				curBackend.Unregister() //nolint:errcheck
+			}
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", curCombo)
 		}()
@@ -205,7 +209,10 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 			if r := recover(); r != nil {
 				log.Printf("hotkey: recovered panic during Reregister cleanup (CGo/shutdown race): %v", r)
 			}
-			newBackend.Unregister() //nolint:errcheck
+			// Skip CGo call during app shutdown — the OS cleans up the event monitor.
+			if !s.shuttingDown.Load() {
+				newBackend.Unregister() //nolint:errcheck
+			}
 			s.registered.Store(false)
 			log.Printf("hotkey: %s unregistered", newCombo)
 		}()
@@ -225,6 +232,18 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 		}
 	}()
 	return nil
+}
+
+// Stop signals that the app is shutting down, cancels the listen goroutine,
+// and sets the shuttingDown flag so defers skip the CGo Unregister call.
+// Must be called before runtime.Quit() to avoid a CGo/Cocoa shutdown panic.
+func (s *HotkeyService) Stop() {
+	s.shuttingDown.Store(true)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cancel != nil {
+		s.cancel()
+	}
 }
 
 // IsRegistered reports whether the hotkey is currently registered.
