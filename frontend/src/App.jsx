@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
@@ -121,12 +121,15 @@ function SettingsPanel({ config, onModelChange, onLanguageChange, onHotkeyChange
 }
 
 // ── HotkeyCapture ─────────────────────────────────────────
-// Displays the current hotkey badge. On click → enters capture mode;
-// the next modifier+key combo pressed becomes the new hotkey.
+// Two modes:
+//   1. Keydown capture (default) — click badge, press keys
+//   2. Text input fallback — for combos macOS intercepts (e.g. ⌃Space)
+//      click "type it" to enter a text field like "ctrl+space"
 function HotkeyCapture({ current, onChange }) {
-    const [capturing, setCapturing] = useState(false);
-    const [preview, setPreview] = useState(null);
-    const [error, setError] = useState(false);
+    const [mode, setMode] = useState('idle'); // 'idle' | 'capture' | 'text'
+    const [textVal, setTextVal] = useState('');
+    const [errorMsg, setErrorMsg] = useState(null);
+    const textRef = useRef(null);
 
     // Format a combo string ("ctrl+space") to a symbol string ("⌃Space")
     const format = useCallback((combo) => {
@@ -139,73 +142,131 @@ function HotkeyCapture({ current, onChange }) {
         return mods.map(m => modSymbols[m] || m).join('') + (keyLabels[key] || key.toUpperCase());
     }, []);
 
+    const applyCombo = useCallback((combo) => {
+        onChange(combo)
+            .then(() => { setMode('idle'); setErrorMsg(null); })
+            .catch(() => {
+                setMode('idle');
+                setErrorMsg(
+                    `"${format(combo)}" is taken by macOS or another app.\n` +
+                    'To free ⌃Space: System Preferences → Keyboard → Shortcuts → Input Sources → uncheck shortcuts.'
+                );
+                setTimeout(() => setErrorMsg(null), 6000);
+            });
+    }, [onChange, format]);
+
+    // ── keydown capture mode ──────────────────────────────
     const handleKeyDown = useCallback((e) => {
-        if (!capturing) return;
+        if (mode !== 'capture') return;
         e.preventDefault();
         e.stopPropagation();
 
-        // Escape cancels capture
-        if (e.key === 'Escape') {
-            setCapturing(false);
-            setPreview(null);
-            return;
-        }
-
-        // Ignore bare modifier keys
+        if (e.key === 'Escape') { setMode('idle'); return; }
         if (['Control', 'Meta', 'Alt', 'Shift'].includes(e.key)) return;
 
-        // Build combo string
         const parts = [];
         if (e.ctrlKey) parts.push('ctrl');
         if (e.altKey) parts.push('option');
         if (e.shiftKey) parts.push('shift');
         if (e.metaKey) parts.push('cmd');
+        if (parts.length === 0) return;
 
-        // Map key to our format
         const keyName = e.code === 'Space' ? 'space'
             : e.key === 'Tab' ? 'tab'
-                : e.key === 'Enter' || e.key === 'Return' ? 'return'
+                : (e.key === 'Enter' || e.key === 'Return') ? 'return'
                     : e.key.toLowerCase();
-
-        if (parts.length === 0) return; // need at least one modifier
         parts.push(keyName);
 
-        const combo = parts.join('+');
-        setPreview(combo);
-        setCapturing(false);
-
-        // Call backend
-        onChange(combo).catch(() => {
-            setError(true);
-            setTimeout(() => setError(false), 1200);
-        });
-    }, [capturing, onChange]);
+        setMode('idle');
+        applyCombo(parts.join('+'));
+    }, [mode, applyCombo]);
 
     useEffect(() => {
-        if (capturing) {
+        if (mode === 'capture') {
             window.addEventListener('keydown', handleKeyDown, true);
             return () => window.removeEventListener('keydown', handleKeyDown, true);
         }
-    }, [capturing, handleKeyDown]);
+    }, [mode, handleKeyDown]);
 
-    const displayed = format(preview || current);
+    // Focus text input when entering text mode
+    useEffect(() => {
+        if (mode === 'text' && textRef.current) {
+            textRef.current.focus();
+            textRef.current.select();
+        }
+    }, [mode]);
 
+    const displayed = format(current);
+
+    // ── text input mode ───────────────────────────────────
+    if (mode === 'text') {
+        return (
+            <div className="vtt-hotkey-text-row">
+                <input
+                    ref={textRef}
+                    id="vtt-hotkey-text-input"
+                    className="vtt-hotkey-text-input"
+                    placeholder="e.g. ctrl+space"
+                    value={textVal}
+                    onChange={e => setTextVal(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                            const v = textVal.trim().toLowerCase();
+                            if (v) applyCombo(v);
+                        }
+                        if (e.key === 'Escape') { setMode('idle'); }
+                    }}
+                    aria-label="Type hotkey combination"
+                />
+                <button
+                    className="vtt-hotkey-text-ok"
+                    onClick={() => { const v = textVal.trim().toLowerCase(); if (v) applyCombo(v); }}
+                    title="Apply"
+                >✓</button>
+                <button
+                    className="vtt-hotkey-text-cancel"
+                    onClick={() => setMode('idle')}
+                    title="Cancel"
+                >✕</button>
+            </div>
+        );
+    }
+
+    // ── idle / capture mode ───────────────────────────────
     return (
-        <button
-            id="vtt-hotkey-capture"
-            className={[
-                'vtt-hotkey-badge',
-                capturing ? 'vtt-hotkey-badge--capturing' : '',
-                error ? 'vtt-hotkey-badge--error' : '',
-            ].join(' ').trim()}
-            onClick={() => { setCapturing(c => !c); setPreview(null); }}
-            title={capturing ? 'Press new shortcut… (Esc to cancel)' : 'Click to change hotkey'}
-            aria-label={`Hotkey: ${displayed}. ${capturing ? 'Press new shortcut' : 'Click to change'}`}
-        >
-            {capturing ? <span className="vtt-hotkey-badge__hint">press keys…</span> : displayed}
-        </button>
+        <div className="vtt-hotkey-wrap">
+            <button
+                id="vtt-hotkey-capture"
+                className={[
+                    'vtt-hotkey-badge',
+                    mode === 'capture' ? 'vtt-hotkey-badge--capturing' : '',
+                    errorMsg ? 'vtt-hotkey-badge--error' : '',
+                ].join(' ').trim()}
+                onClick={() => setMode(m => m === 'capture' ? 'idle' : 'capture')}
+                title={mode === 'capture' ? 'Press new shortcut… (Esc to cancel)' : 'Click to change hotkey'}
+                aria-label={`Hotkey: ${displayed}. ${mode === 'capture' ? 'Press new shortcut' : 'Click to change'}`}
+            >
+                {mode === 'capture'
+                    ? <span className="vtt-hotkey-badge__hint">press keys…</span>
+                    : displayed}
+            </button>
+            {mode === 'capture' && (
+                <button
+                    className="vtt-hotkey-type-link"
+                    onClick={() => { setMode('text'); setTextVal(current || ''); }}
+                    title="macOS intercepts some keys (e.g. ⌃Space). Type the combo instead."
+                >type it</button>
+            )}
+            {errorMsg && (
+                <div className="vtt-hotkey-error-tip" role="alert">
+                    {errorMsg}
+                </div>
+            )}
+        </div>
     );
 }
+
+
 
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
