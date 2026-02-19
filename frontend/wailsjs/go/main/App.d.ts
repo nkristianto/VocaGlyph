@@ -8,7 +8,11 @@ export function GetLaunchAtLogin():Promise<boolean>;
 
 export function GetStatus():Promise<string>;
 
+export function OpenSystemSettings():Promise<void>;
+
 export function Quit():Promise<void>;
+
+export function SetAudioService(arg1:main.audioStarter):Promise<void>;
 
 export function SetHotkeyService(arg1:main.hotkeyStarter):Promise<void>;
 

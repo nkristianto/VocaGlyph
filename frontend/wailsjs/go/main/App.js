@@ -14,8 +14,16 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function OpenSystemSettings() {
+  return window['go']['main']['App']['OpenSystemSettings']();
+}
+
 export function Quit() {
   return window['go']['main']['App']['Quit']();
+}
+
+export function SetAudioService(arg1) {
+  return window['go']['main']['App']['SetAudioService'](arg1);
 }
 
 export function SetHotkeyService(arg1) {

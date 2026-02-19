@@ -31,15 +31,18 @@ type audioBackend interface {
 }
 
 // realAudioBackend wraps gordonklaus/portaudio for production use.
+// Uses the BLOCKING stream API (stream.Read in a Go goroutine) rather than
+// the callback API — callbacks run on a C thread and calling Go runtime
+// functions (make, channel sends) from C threads causes goroutine panics.
 type realAudioBackend struct {
 	stream   *portaudio.Stream
+	buf      []float32 // shared read buffer
 	framesCh chan []float32
+	stopCh   chan struct{} // closed by Stop() to signal reader goroutine
 }
 
 func newRealAudioBackend() *realAudioBackend {
-	return &realAudioBackend{
-		framesCh: make(chan []float32, 64), // buffered to avoid dropping frames
-	}
+	return &realAudioBackend{}
 }
 
 func (r *realAudioBackend) Open() error {
@@ -47,24 +50,18 @@ func (r *realAudioBackend) Open() error {
 		return fmt.Errorf("portaudio init: %w", err)
 	}
 
-	buf := make([]float32, audioFramesPerBuf)
+	r.buf = make([]float32, audioFramesPerBuf)
+	r.framesCh = make(chan []float32, 64) // fresh channel each session
+	r.stopCh = make(chan struct{})
+
+	// Blocking stream: pass a []float32 buffer, not a callback.
 	stream, err := portaudio.OpenDefaultStream(
-		audioChannels, // input channels
-		0,             // output channels (none)
+		audioChannels,
+		0,
 		float64(audioSampleRate),
 		audioFramesPerBuf,
-		func(in []float32) {
-			// Copy the frame — portaudio reuses the buffer
-			frame := make([]float32, len(in))
-			copy(frame, in)
-			select {
-			case r.framesCh <- frame:
-			default:
-				// Drop frame if consumer is too slow (ring buffer handles overflow)
-			}
-		},
+		r.buf, // <-- blocking API: portaudio fills this on each Read()
 	)
-	_ = buf // suppress unused warning
 	if err != nil {
 		portaudio.Terminate() //nolint:errcheck
 		// Detect macOS microphone permission denial.
@@ -84,14 +81,45 @@ func (r *realAudioBackend) Start() error {
 	if err := r.stream.Start(); err != nil {
 		return fmt.Errorf("portaudio start stream: %w", err)
 	}
+
+	// Reader goroutine: blocks on stream.Read(), copies buffer, sends to framesCh.
+	// Runs on a proper Go goroutine — safe to use Go runtime functions.
+	go func() {
+		for {
+			select {
+			case <-r.stopCh:
+				return
+			default:
+			}
+
+			if err := r.stream.Read(); err != nil {
+				return // stream stopped or error
+			}
+
+			// Copy the filled buffer before next Read() overwrites it.
+			frame := make([]float32, len(r.buf))
+			copy(frame, r.buf)
+
+			select {
+			case r.framesCh <- frame:
+			case <-r.stopCh:
+				return
+			default:
+				// Consumer too slow — drop frame; ring buffer handles overflow
+			}
+		}
+	}()
+
 	return nil
 }
 
 func (r *realAudioBackend) Stop() error {
-	if err := r.stream.Stop(); err != nil {
+	close(r.stopCh) // signal reader goroutine to exit
+	err := r.stream.Stop()
+	close(r.framesCh) // signal Frames() consumers
+	if err != nil {
 		return fmt.Errorf("portaudio stop stream: %w", err)
 	}
-	close(r.framesCh)
 	return nil
 }
 
