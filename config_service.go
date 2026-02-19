@@ -10,9 +10,11 @@ import (
 // Config holds persistent user preferences.
 // Stored as JSON at ~/.voice-to-text/config.json.
 type Config struct {
-	Model    string `json:"model"`    // "tiny", "base", "small"
-	Language string `json:"language"` // "en", "auto", "es", etc.
-	Hotkey   string `json:"hotkey"`   // e.g. "ctrl+space", "option+f"
+	Model    string `json:"model"`              // "tiny", "base", "small"
+	Language string `json:"language"`           // "en", "auto", "es", etc.
+	Hotkey   string `json:"hotkey"`             // e.g. "ctrl+space", "option+f"
+	WindowX  int    `json:"window_x,omitempty"` // last known window position
+	WindowY  int    `json:"window_y,omitempty"`
 }
 
 // defaultConfig returns factory defaults.

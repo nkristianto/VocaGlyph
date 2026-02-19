@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"os"
@@ -64,6 +65,10 @@ func main() {
 		StartHidden:       true, // window hidden at launch; systray icon reveals it
 		HideWindowOnClose: true, // X button hides, doesn't quit
 		Menu:              appMenu,
+		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			app.SaveWindowPosition()
+			return false
+		},
 	})
 
 	if err != nil {

@@ -98,6 +98,13 @@ func (a *App) startup(ctx context.Context) {
 	a.mu.Unlock()
 	a.once.Do(func() { close(a.startupCh) })
 
+	// Restore last window position (if saved).
+	if a.config != nil {
+		if cfg := a.config.Load(); cfg.WindowX != 0 || cfg.WindowY != 0 {
+			runtime.WindowSetPosition(ctx, cfg.WindowX, cfg.WindowY)
+		}
+	}
+
 	// Launch systray icon (mic) in menu bar after Wails/Cocoa is running.
 	// HideFromDock() is called inside onSystrayReady on the Cocoa thread.
 	go StartSystray(a)
@@ -240,6 +247,27 @@ func (a *App) Quit() {
 		ctx := a.waitForStartup()
 		runtime.Quit(ctx)
 	}()
+}
+
+// SaveWindowPosition persists the current window X/Y to config so it can be
+// restored on the next launch. Called from OnBeforeClose in main.go.
+func (a *App) SaveWindowPosition() {
+	if a.config == nil {
+		return
+	}
+	a.mu.RLock()
+	ctx := a.ctx
+	a.mu.RUnlock()
+	if ctx == nil {
+		return
+	}
+	x, y := runtime.WindowGetPosition(ctx)
+	cfg := a.config.Load()
+	cfg.WindowX = x
+	cfg.WindowY = y
+	if err := a.config.Save(cfg); err != nil {
+		log.Printf("config: failed to save window position: %v", err)
+	}
 }
 
 // GetConfig returns the current persisted configuration.
