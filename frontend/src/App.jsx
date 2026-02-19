@@ -205,17 +205,17 @@ function App() {
                         <span className="vtt-toggle__track" />
                     </span>
                 </label>
+
+                {/* HUD pill — overlays bottom of card while recording */}
+                {appState === APP_STATES.RECORDING && (
+                    <RecordingHUD elapsedSecs={elapsedSecs} />
+                )}
+
+                {/* Transcription overlay — overlays bottom of card after stop */}
+                {appState === APP_STATES.PROCESSING && transcriptionText && (
+                    <TranscriptionOverlay text={transcriptionText} />
+                )}
             </div>
-
-            {/* HUD pill — visible during recording only */}
-            {appState === APP_STATES.RECORDING && (
-                <RecordingHUD elapsedSecs={elapsedSecs} />
-            )}
-
-            {/* Transcription overlay — visible after recording stops with result */}
-            {appState === APP_STATES.PROCESSING && transcriptionText && (
-                <TranscriptionOverlay text={transcriptionText} />
-            )}
         </>
     );
 }

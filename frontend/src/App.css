@@ -80,6 +80,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--vtt-space-3);
+  position: relative;
 
   background: var(--vtt-bg-glass);
   backdrop-filter: blur(24px) saturate(180%);
@@ -369,7 +370,7 @@
 }
 
 .vtt-hud {
-  position: fixed;
+  position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
@@ -378,14 +379,15 @@
   gap: var(--vtt-space-3);
   padding: var(--vtt-space-2) var(--vtt-space-4);
 
-  background: var(--vtt-bg-glass);
+  background: rgba(18, 18, 18, 0.92);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(242, 13, 13, 0.35);
+  border: 1px solid rgba(242, 13, 13, 0.50);
   border-radius: var(--vtt-radius-pill);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--vtt-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--vtt-border);
   animation: vtt-hud-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  z-index: 100;
+  z-index: 10;
+  white-space: nowrap;
 }
 
 .vtt-hud--hiding {
@@ -499,22 +501,22 @@
 }
 
 .vtt-overlay {
-  position: fixed;
+  position: absolute;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
-  width: calc(var(--vtt-popover-width) - 24px);
-  padding: var(--vtt-space-4) var(--vtt-space-5);
+  width: calc(var(--vtt-popover-width) - 32px);
+  padding: var(--vtt-space-3) var(--vtt-space-4);
 
-  background: var(--vtt-bg-glass);
+  background: rgba(14, 26, 18, 0.95);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
 
-  border-radius: var(--vtt-radius-xl);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--vtt-border);
+  border-radius: var(--vtt-radius-lg);
+  border: 1px solid rgba(34, 197, 94, 0.50);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--vtt-border);
   animation: vtt-overlay-in 240ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  z-index: 100;
+  z-index: 10;
 }
 
 .vtt-overlay--hiding {

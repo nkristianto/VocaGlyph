@@ -139,6 +139,10 @@ func (s *WhisperService) Start(whisperCh <-chan []float32, onResult func(string)
 				log.Printf("whisper: empty transcription — skipping")
 				continue
 			}
+			if isHallucination(text) {
+				log.Printf("whisper: hallucination tag %q — skipping", text)
+				continue
+			}
 			if latency > 500*time.Millisecond {
 				log.Printf("whisper: ⚠ slow transcription %q (%dms — exceeds 500ms NFR)", text, latency.Milliseconds())
 			} else {
@@ -168,4 +172,29 @@ func trim(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// isHallucination reports whether the text is a known whisper.cpp hallucination tag
+// produced during silence or noise (e.g. "[BLANK_AUDIO]", "(Music)", "(noise)").
+func isHallucination(s string) bool {
+	tags := []string{
+		"[BLANK_AUDIO]",
+		"[blank_audio]",
+		"(Music)",
+		"(music)",
+		"(noise)",
+		"(Noise)",
+		"[MUSIC]",
+		"[Music]",
+		"(clapping)",
+		"(Applause)",
+		"[silence]",
+	}
+	for _, tag := range tags {
+		if s == tag {
+			return true
+		}
+	}
+	// Also catch variations wrapped in brackets/parens that appear alone
+	return len(s) > 2 && ((s[0] == '[' && s[len(s)-1] == ']') || (s[0] == '(' && s[len(s)-1] == ')'))
 }
