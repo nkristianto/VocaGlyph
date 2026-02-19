@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin } from '../wailsjs/go/main/App';
-import { EventsOn } from '@wailsapp/runtime';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
