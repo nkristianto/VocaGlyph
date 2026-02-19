@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey } from '../wailsjs/go/main/App';
-import { EventsOn, WindowSetPosition } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowSetPosition, WindowGetPosition } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
@@ -387,26 +387,39 @@ function App() {
     }
 
     // ── Window drag hook ──────────────────────────────────────
-    // Uses screen-space mouse coords so any movement of the mouse
-    // maps directly to window movement, regardless of zoom/DPR.
-    const dragRef = useRef(null); // { startMouseX, startMouseY, startWinX, startWinY }
+    // window.screenX/Y is unreliable in Wails WebKit (returns 0).
+    // Instead, fetch the real window position via Wails IPC on mousedown,
+    // then use that as the base for all subsequent mousemove deltas.
+    const dragRef = useRef(null);
 
     const onDragStart = useCallback((e) => {
-        if (e.button !== 0) return; // left button only
+        if (e.button !== 0) return;
         e.preventDefault();
-        const startWinX = window.screenX;
-        const startWinY = window.screenY;
+
         const startMouseX = e.screenX;
         const startMouseY = e.screenY;
-        dragRef.current = { startWinX, startWinY, startMouseX, startMouseY };
+
+        // Fetch actual window position from Wails backend (async, typically <5ms).
+        // Store a sentinel so mousemove waits until this resolves.
+        const state = { winX: null, winY: null, moved: false };
+        dragRef.current = state;
+
+        WindowGetPosition().then(({ x, y }) => {
+            if (dragRef.current === state) {
+                state.winX = x;
+                state.winY = y;
+            }
+        });
+
+        const THRESHOLD = 3; // px — ignore tiny accidental micro-moves on click
 
         const onMove = (ev) => {
-            if (!dragRef.current) return;
-            const { startWinX, startWinY, startMouseX, startMouseY } = dragRef.current;
-            WindowSetPosition(
-                startWinX + ev.screenX - startMouseX,
-                startWinY + ev.screenY - startMouseY
-            );
+            if (dragRef.current !== state || state.winX === null) return;
+            const dx = ev.screenX - startMouseX;
+            const dy = ev.screenY - startMouseY;
+            if (!state.moved && Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+            state.moved = true;
+            WindowSetPosition(state.winX + dx, state.winY + dy);
         };
         const onUp = () => {
             dragRef.current = null;
