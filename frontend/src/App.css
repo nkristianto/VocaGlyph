@@ -1,69 +1,255 @@
-/* Inter font — loaded locally via wailsjs bundle; falls back to system font if offline build strips it */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+/* ============================================================
+   voice-to-text Design System — App.css
+   Design tokens + component classes
+   ============================================================ */
 
+/* ── Design Tokens ─────────────────────────────────────── */
 :root {
-  --accent: #f20d0d;
-  --bg: rgba(18, 18, 18, 0.92);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Colors */
+  --vtt-accent: #f20d0d;
+  --vtt-accent-glow: rgba(242, 13, 13, 0.35);
+  --vtt-accent-dim: rgba(242, 13, 13, 0.15);
+
+  --vtt-bg-glass: rgba(18, 18, 22, 0.88);
+  --vtt-bg-surface: rgba(255, 255, 255, 0.05);
+  --vtt-bg-surface-hover: rgba(255, 255, 255, 0.09);
+
+  --vtt-border: rgba(255, 255, 255, 0.10);
+  --vtt-border-strong: rgba(255, 255, 255, 0.18);
+
+  --vtt-text-primary: #ffffff;
+  --vtt-text-secondary: rgba(255, 255, 255, 0.55);
+  --vtt-text-tertiary: rgba(255, 255, 255, 0.30);
+
+  /* Typography */
+  --vtt-font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --vtt-font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+
+  --vtt-text-xs: 11px;
+  --vtt-text-sm: 13px;
+  --vtt-text-base: 14px;
+  --vtt-text-lg: 16px;
+  --vtt-text-xl: 20px;
+
+  --vtt-weight-regular: 400;
+  --vtt-weight-semibold: 600;
+
+  --vtt-leading-tight: 1.2;
+  --vtt-leading-normal: 1.5;
+
+  /* Spacing */
+  --vtt-space-1: 4px;
+  --vtt-space-2: 8px;
+  --vtt-space-3: 12px;
+  --vtt-space-4: 16px;
+  --vtt-space-5: 20px;
+  --vtt-space-6: 24px;
+  --vtt-space-8: 32px;
+
+  /* Radius */
+  --vtt-radius-sm: 6px;
+  --vtt-radius-md: 10px;
+  --vtt-radius-lg: 14px;
+  --vtt-radius-xl: 20px;
+  --vtt-radius-pill: 999px;
+
+  /* Shadows */
+  --vtt-shadow-glow: 0 0 12px var(--vtt-accent-glow);
+  --vtt-shadow-window: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px var(--vtt-border);
+
+  /* Motion */
+  --vtt-transition-fast: 120ms ease;
+  --vtt-transition-base: 220ms ease;
+  --vtt-transition-slow: 380ms ease;
+
+  /* Mic icon */
+  --vtt-mic-size: 48px;
+  --vtt-mic-font-size: 36px;
+
+  /* Popover */
+  --vtt-popover-width: 320px;
+  --vtt-popover-padding: var(--vtt-space-6);
 }
 
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text-primary);
-  -webkit-font-smoothing: antialiased;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-#App {
+/* ── Popover Container ──────────────────────────────────── */
+.vtt-popover {
+  width: var(--vtt-popover-width);
+  padding: var(--vtt-popover-padding);
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: var(--vtt-space-3);
+
+  background: var(--vtt-bg-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+
+  border-radius: var(--vtt-radius-xl);
+  border: 1px solid var(--vtt-border);
+  box-shadow: var(--vtt-shadow-window);
+}
+
+/* ── Mic Icon ───────────────────────────────────────────── */
+.vtt-mic-icon {
+  width: var(--vtt-mic-size);
+  height: var(--vtt-mic-size);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding: 28px 24px 24px;
-  gap: 8px;
-  min-height: 140px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 12px;
-}
-
-.mic-icon {
-  font-size: 40px;
+  font-size: var(--vtt-mic-font-size);
   line-height: 1;
-  margin-bottom: 4px;
-  filter: drop-shadow(0 0 8px var(--accent));
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: filter var(--vtt-transition-base),
+    transform var(--vtt-transition-base);
 }
 
-.app-title {
-  font-size: 15px;
-  font-weight: 600;
+/* Idle state */
+.vtt-state-idle .vtt-mic-icon {
+  filter: drop-shadow(var(--vtt-shadow-glow));
+}
+
+/* Recording state — pulse animation */
+.vtt-state-recording .vtt-mic-icon {
+  filter: drop-shadow(0 0 16px var(--vtt-accent));
+  animation: vtt-pulse 1.2s ease-in-out infinite;
+}
+
+/* Processing state */
+.vtt-state-processing .vtt-mic-icon {
+  opacity: 0.6;
+  filter: none;
+}
+
+@keyframes vtt-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px var(--vtt-accent));
+  }
+
+  50% {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 20px var(--vtt-accent));
+  }
+}
+
+/* ── App Title ──────────────────────────────────────────── */
+.vtt-title {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-base);
+  font-weight: var(--vtt-weight-semibold);
+  color: var(--vtt-text-primary);
+  letter-spacing: 0.01em;
+  line-height: var(--vtt-leading-tight);
+}
+
+/* ── Status Text ────────────────────────────────────────── */
+.vtt-status-text {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-sm);
+  font-weight: var(--vtt-weight-regular);
+  color: var(--vtt-text-secondary);
+  line-height: var(--vtt-leading-normal);
+  transition: color var(--vtt-transition-base);
+}
+
+.vtt-state-recording .vtt-status-text {
+  color: var(--vtt-accent);
+}
+
+.vtt-state-processing .vtt-status-text {
+  color: var(--vtt-text-tertiary);
+}
+
+/* ── Status Badge (hotkey hint) ─────────────────────────── */
+.vtt-status-badge {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-tertiary);
+  background: var(--vtt-bg-surface);
+  border: 1px solid var(--vtt-border);
+  padding: 2px var(--vtt-space-2);
+  border-radius: var(--vtt-radius-sm);
   letter-spacing: 0.02em;
-  color: var(--text-primary);
+  transition: color var(--vtt-transition-fast),
+    background var(--vtt-transition-fast);
 }
 
-.status-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 400;
+.vtt-status-badge:hover {
+  color: var(--vtt-text-secondary);
+  background: var(--vtt-bg-surface-hover);
 }
 
-.hint-text {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.07);
-  padding: 2px 8px;
-  border-radius: 4px;
-  margin-top: 4px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+/* ── Divider ────────────────────────────────────────────── */
+.vtt-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--vtt-border);
+  flex-shrink: 0;
+  margin: var(--vtt-space-1) 0;
+}
+
+/* ── Toggle (for Settings — Story 1.2) ─────────────────── */
+.vtt-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--vtt-space-4);
+}
+
+.vtt-toggle__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-sm);
+  color: var(--vtt-text-secondary);
+}
+
+.vtt-toggle__switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.vtt-toggle__switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.vtt-toggle__track {
+  position: absolute;
+  inset: 0;
+  background: var(--vtt-bg-surface);
+  border: 1px solid var(--vtt-border-strong);
+  border-radius: var(--vtt-radius-pill);
+  cursor: pointer;
+  transition: background var(--vtt-transition-base),
+    border-color var(--vtt-transition-base);
+}
+
+.vtt-toggle__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--vtt-text-secondary);
+  border-radius: 50%;
+  transition: transform var(--vtt-transition-base),
+    background var(--vtt-transition-base);
+}
+
+.vtt-toggle__switch input:checked+.vtt-toggle__track {
+  background: var(--vtt-accent-dim);
+  border-color: var(--vtt-accent);
+}
+
+.vtt-toggle__switch input:checked+.vtt-toggle__track::after {
+  transform: translateX(16px);
+  background: var(--vtt-accent);
 }
