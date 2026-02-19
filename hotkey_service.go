@@ -29,9 +29,10 @@ type hotkeyBackend interface {
 // The hotkey.Hotkey is created lazily in Register() to avoid spawning CGo
 // goroutines at construction time — which would leak into unit tests.
 type realHotkeyBackend struct {
-	hk   *hotkey.Hotkey
-	mods []hotkey.Modifier
-	key  hotkey.Key
+	hk    *hotkey.Hotkey
+	mods  []hotkey.Modifier
+	key   hotkey.Key
+	keyCh chan struct{} // buffered relay; filled once in Register()
 }
 
 func newRealBackend() *realHotkeyBackend {
@@ -52,6 +53,19 @@ func (r *realHotkeyBackend) Register() error {
 	if err := r.hk.Register(); err != nil {
 		return ErrHotkeyConflict
 	}
+	// Create a buffered relay channel and pump events into it.
+	// This goroutine owns the hk.Keydown() read loop; it exits when hk channel closes.
+	r.keyCh = make(chan struct{}, 4)
+	src := r.hk.Keydown()
+	go func() {
+		for range src {
+			select {
+			case r.keyCh <- struct{}{}:
+			default: // drop if buffer full (rapid presses)
+			}
+		}
+		close(r.keyCh) // signal downstream that hk is gone
+	}()
 	return nil
 }
 
@@ -62,15 +76,9 @@ func (r *realHotkeyBackend) Unregister() error {
 	return r.hk.Unregister()
 }
 
-// Keydown wraps the hotkey.Event channel into a plain struct{} channel.
+// Keydown returns the relay channel. No goroutine spawned here.
 func (r *realHotkeyBackend) Keydown() <-chan struct{} {
-	ch := make(chan struct{}, 1)
-	go func() {
-		for range r.hk.Keydown() {
-			ch <- struct{}{}
-		}
-	}()
-	return ch
+	return r.keyCh
 }
 
 // HotkeyService manages global hotkey registration for voice-to-text.
@@ -79,6 +87,7 @@ type HotkeyService struct {
 	backend    hotkeyBackend
 	combo      string // current hotkey combo string e.g. "ctrl+space"
 	registered atomic.Bool
+	parentCtx  context.Context    // root context from Start() — used by Reregister
 	cancel     context.CancelFunc // cancels the listen goroutine
 	onTrigger  func()
 }
@@ -115,6 +124,7 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 	}
 	s.registered.Store(true)
 	s.onTrigger = onTrigger
+	s.parentCtx = ctx // save so Reregister can inherit the right parent
 	log.Printf("hotkey: %s registered", s.combo)
 
 	listenCtx, cancel := context.WithCancel(ctx)
@@ -168,10 +178,14 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 	s.registered.Store(true)
 	log.Printf("hotkey: re-registered %s → %s", oldCombo, newCombo)
 
-	// Restart the listen goroutine with a new context.
-	// We need a parent context — use Background since we can't access app ctx here.
-	// The goroutine will unregister on app shutdown naturally.
-	listenCtx, cancel := context.WithCancel(context.Background())
+	// Restart the listen goroutine with a new context derived from the stored parent.
+	// Using parentCtx (from Start) ensures the goroutine is cancelled when the app shuts down,
+	// not just when context.Background() is cleaned up (which is never).
+	parent := s.parentCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	listenCtx, cancel := context.WithCancel(parent)
 	s.cancel = cancel
 	trigger := s.onTrigger
 	keydown := newBackend.Keydown()
