@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey } from '../wailsjs/go/main/App';
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowSetPosition } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
@@ -386,6 +386,37 @@ function App() {
         });
     }
 
+    // ── Window drag hook ──────────────────────────────────────
+    // Uses screen-space mouse coords so any movement of the mouse
+    // maps directly to window movement, regardless of zoom/DPR.
+    const dragRef = useRef(null); // { startMouseX, startMouseY, startWinX, startWinY }
+
+    const onDragStart = useCallback((e) => {
+        if (e.button !== 0) return; // left button only
+        e.preventDefault();
+        const startWinX = window.screenX;
+        const startWinY = window.screenY;
+        const startMouseX = e.screenX;
+        const startMouseY = e.screenY;
+        dragRef.current = { startWinX, startWinY, startMouseX, startMouseY };
+
+        const onMove = (ev) => {
+            if (!dragRef.current) return;
+            const { startWinX, startWinY, startMouseX, startMouseY } = dragRef.current;
+            WindowSetPosition(
+                startWinX + ev.screenX - startMouseX,
+                startWinY + ev.screenY - startMouseY
+            );
+        };
+        const onUp = () => {
+            dragRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, []);
+
     return (
         <>
             <div
@@ -393,18 +424,26 @@ function App() {
                 className={`vtt-popover vtt-state-${appState}`}
                 data-testid="vtt-root"
             >
-                {/* Mic icon */}
-                <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
-                    🎙
+                {/* Drag handle — top section containing mic + title + status */}
+                <div
+                    className="vtt-drag-handle"
+                    onMouseDown={onDragStart}
+                    title="Drag to move"
+                >
+                    {/* Mic icon */}
+                    <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
+                        🎙
+                    </div>
+
+                    {/* App title */}
+                    <div id="vtt-title" className="vtt-title">voice-to-text</div>
+
+                    {/* Status text */}
+                    <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
+                        {statusText}
+                    </div>
                 </div>
 
-                {/* App title */}
-                <div id="vtt-title" className="vtt-title">voice-to-text</div>
-
-                {/* Status text */}
-                <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
-                    {statusText}
-                </div>
 
                 {/* Hotkey badge — or conflict/permission-denied warning */}
                 {micDenied ? (

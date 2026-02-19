@@ -128,6 +128,26 @@ body,
   app-region: no-drag;
 }
 
+/* ── Drag handle (top header area) ──────────────────────── */
+/* This is the JS-drag zone: mic icon + title + status text.  */
+/* cursor:grab gives natural feedback that it's draggable.   */
+.vtt-drag-handle {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vtt-space-1);
+  padding: var(--vtt-space-2) 0;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vtt-drag-handle:active {
+  cursor: grabbing;
+}
+
+
 /* ── Mic Icon ───────────────────────────────────────────── */
 .vtt-mic-icon {
   width: var(--vtt-mic-size);
