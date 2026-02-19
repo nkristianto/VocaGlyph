@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { GetStatus } from '../wailsjs/go/main/App';
+import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin } from '../wailsjs/go/main/App';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
@@ -9,18 +9,17 @@ const APP_STATES = {
     PROCESSING: 'processing',
 };
 
-// Hotkey label shown in the badge
 const HOTKEY_LABEL = '⌃Space';
 
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
+    const [launchAtLogin, setLaunchAtLogin] = useState(false);
 
-    // Load initial status from Go backend
+    // Load initial values from Go backend
     useEffect(() => {
-        GetStatus()
-            .then(setStatusText)
-            .catch(() => setStatusText('Ready to dictate'));
+        GetStatus().then(setStatusText).catch(() => setStatusText('Ready to dictate'));
+        GetLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
     }, []);
 
     // Derive status label from app state
@@ -32,45 +31,56 @@ function App() {
         }
     }, [appState]);
 
+    function handleLaunchToggle(e) {
+        const checked = e.target.checked;
+        setLaunchAtLogin(checked);
+        SetLaunchAtLogin(checked).catch((err) => {
+            // Revert on failure
+            setLaunchAtLogin(!checked);
+            console.error('SetLaunchAtLogin failed:', err);
+        });
+    }
+
     return (
         <div
             id="App"
             className={`vtt-popover vtt-state-${appState}`}
             data-testid="vtt-root"
         >
-            {/* Mic icon — visual state driven by CSS */}
-            <div
-                id="vtt-mic-icon"
-                className="vtt-mic-icon"
-                aria-label="Microphone"
-                role="img"
-            >
+            {/* Mic icon */}
+            <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
                 🎙
             </div>
 
             {/* App title */}
-            <div id="vtt-title" className="vtt-title">
-                voice-to-text
-            </div>
+            <div id="vtt-title" className="vtt-title">voice-to-text</div>
 
-            {/* Status text — updates with state */}
-            <div
-                id="vtt-status"
-                className="vtt-status-text"
-                aria-live="polite"
-                aria-atomic="true"
-            >
+            {/* Status text */}
+            <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
                 {statusText}
             </div>
 
             {/* Hotkey badge */}
-            <div
-                id="vtt-hotkey-badge"
-                className="vtt-status-badge"
-                title="Press this hotkey to start recording"
-            >
+            <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to start recording">
                 {HOTKEY_LABEL} to record
             </div>
+
+            {/* Settings section */}
+            <div className="vtt-divider" />
+
+            <label className="vtt-toggle">
+                <span className="vtt-toggle__label">Launch at login</span>
+                <span className="vtt-toggle__switch">
+                    <input
+                        id="vtt-launch-at-login"
+                        type="checkbox"
+                        checked={launchAtLogin}
+                        onChange={handleLaunchToggle}
+                        aria-label="Launch at login"
+                    />
+                    <span className="vtt-toggle__track" />
+                </span>
+            </label>
 
             {/* Developer state switcher — remove in Story 2 when hotkey wired */}
             {process.env.NODE_ENV === 'development' && (
