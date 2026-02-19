@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 
 	"github.com/gordonklaus/portaudio"
 )
+
+// ErrMicPermissionDenied is returned when macOS has denied microphone access.
+var ErrMicPermissionDenied = errors.New("microphone access denied — enable in System Settings → Privacy → Microphone")
 
 const (
 	audioSampleRate   = 16000 // Hz — Whisper's expected input rate
@@ -62,6 +67,13 @@ func (r *realAudioBackend) Open() error {
 	_ = buf // suppress unused warning
 	if err != nil {
 		portaudio.Terminate() //nolint:errcheck
+		// Detect macOS microphone permission denial.
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "denied") ||
+			strings.Contains(errStr, "device unavailable") ||
+			strings.Contains(errStr, "unauthorized") {
+			return ErrMicPermissionDenied
+		}
 		return fmt.Errorf("portaudio open stream: %w", err)
 	}
 	r.stream = stream
@@ -123,6 +135,9 @@ func (s *AudioService) StartRecording(ctx context.Context) error {
 	}
 
 	if err := s.backend.Open(); err != nil {
+		if errors.Is(err, ErrMicPermissionDenied) {
+			return ErrMicPermissionDenied // return sentinel unwrapped for errors.Is()
+		}
 		return fmt.Errorf("audio: open: %w", err)
 	}
 	if err := s.backend.Start(); err != nil {

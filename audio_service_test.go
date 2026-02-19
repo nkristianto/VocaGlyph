@@ -12,8 +12,8 @@ type mockAudioBackend struct {
 	started bool
 	stopped bool
 	closed  bool
-	// dataCh simulates audio frames arriving during recording.
-	dataCh chan []float32
+	openErr error // if set, Open() returns this error
+	dataCh  chan []float32
 }
 
 func newMockAudioBackend() *mockAudioBackend {
@@ -21,6 +21,9 @@ func newMockAudioBackend() *mockAudioBackend {
 }
 
 func (m *mockAudioBackend) Open() error {
+	if m.openErr != nil {
+		return m.openErr
+	}
 	m.opened = true
 	return nil
 }
@@ -146,4 +149,24 @@ func TestNoDiskWrites(t *testing.T) {
 	}
 	// pcm is the only output — no file was created
 	_ = pcm
+}
+
+func TestPermissionDenied(t *testing.T) {
+	mock := newMockAudioBackend()
+	mock.openErr = ErrMicPermissionDenied
+	svc := newAudioServiceWithBackend(mock, NewRingBuffer(1024))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := svc.StartRecording(ctx)
+	if err == nil {
+		t.Fatal("StartRecording() should return error when permission denied; got nil")
+	}
+	if err != ErrMicPermissionDenied {
+		t.Errorf("StartRecording() error = %v; want ErrMicPermissionDenied", err)
+	}
+	if svc.IsRecording() {
+		t.Error("IsRecording() = true after permission denied; want false")
+	}
 }

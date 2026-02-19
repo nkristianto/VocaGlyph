@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './App.css';
-import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin } from '../wailsjs/go/main/App';
+import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
@@ -17,6 +17,7 @@ function App() {
     const [statusText, setStatusText] = useState('Ready to dictate');
     const [launchAtLogin, setLaunchAtLogin] = useState(false);
     const [hotkeyConflict, setHotkeyConflict] = useState(false);
+    const [micDenied, setMicDenied] = useState(false);
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -24,9 +25,10 @@ function App() {
         GetLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
     }, []);
 
-    // Listen for hotkey events from Go backend
+    // Listen for hotkey + audio events from Go backend
     useEffect(() => {
         const unsubTrigger = EventsOn('hotkey:triggered', () => {
+            setMicDenied(false); // clear any previous permission error on successful start
             setAppState((prev) => {
                 if (prev === APP_STATES.IDLE) return APP_STATES.RECORDING;
                 if (prev === APP_STATES.RECORDING) return APP_STATES.PROCESSING;
@@ -38,9 +40,15 @@ function App() {
             setHotkeyConflict(true);
         });
 
+        const unsubMicDenied = EventsOn('audio:permission-denied', () => {
+            setMicDenied(true);
+            setAppState(APP_STATES.IDLE);
+        });
+
         return () => {
             unsubTrigger();
             unsubConflict();
+            unsubMicDenied();
         };
     }, []);
 
@@ -86,8 +94,24 @@ function App() {
                 {statusText}
             </div>
 
-            {/* Hotkey badge or conflict warning */}
-            {hotkeyConflict ? (
+            {/* Hotkey badge — or conflict/permission-denied warning */}
+            {micDenied ? (
+                <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🎙 Microphone access required</span>
+                    <button
+                        id="vtt-open-settings"
+                        onClick={() => OpenSystemSettings().catch(console.error)}
+                        style={{
+                            background: 'none', border: '1px solid var(--vtt-accent)',
+                            color: 'var(--vtt-accent)', borderRadius: '4px',
+                            padding: '2px 6px', fontSize: '10px', cursor: 'pointer',
+                            fontFamily: 'var(--vtt-font-mono)',
+                        }}
+                    >
+                        Open Settings
+                    </button>
+                </div>
+            ) : hotkeyConflict ? (
                 <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)' }}>
                     ⚠ ⌃Space conflict — choose another key
                 </div>

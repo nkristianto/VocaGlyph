@@ -61,5 +61,7 @@
           {{end}}
         </array>
         {{end}}
+        <key>NSMicrophoneUsageDescription</key>
+        <string>voice-to-text needs microphone access to capture your speech for local transcription. No audio is stored or transmitted.</string>
     </dict>
 </plist>

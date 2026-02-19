@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -120,8 +121,14 @@ func (a *App) onHotkeyTriggered() {
 		recordCtx, cancel := context.WithCancel(ctx)
 		a.audioCancelFn = cancel
 		if err := a.audio.StartRecording(recordCtx); err != nil {
-			log.Printf("audio: start error: %v", err)
-			runtime.EventsEmit(ctx, "audio:error")
+			cancel()
+			if errors.Is(err, ErrMicPermissionDenied) {
+				log.Printf("audio: microphone permission denied")
+				runtime.EventsEmit(ctx, "audio:permission-denied")
+			} else {
+				log.Printf("audio: start error: %v", err)
+				runtime.EventsEmit(ctx, "audio:error")
+			}
 			return
 		}
 		runtime.EventsEmit(ctx, "hotkey:triggered") // → recording state in React
@@ -155,6 +162,14 @@ func (a *App) Quit() {
 // GetStatus returns the current app status displayed in the UI.
 func (a *App) GetStatus() string {
 	return "Ready to dictate"
+}
+
+// OpenSystemSettings opens the macOS Privacy & Security → Microphone pane.
+// Exposed to the frontend via Wails JS binding so the permission badge can deep-link.
+func (a *App) OpenSystemSettings() error {
+	return exec.Command("open",
+		"x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+	).Run()
 }
 
 // GetHotkeyStatus returns the current hotkey registration status.
