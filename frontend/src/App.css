@@ -108,6 +108,24 @@ body,
   /* No border-radius — macOS window chrome handles the rounded corners */
   border: none;
   box-shadow: none;
+
+  /* Make the whole window draggable like a native macOS panel */
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Interactive elements must opt OUT of drag so clicks still work */
+.vtt-popover button,
+.vtt-popover input,
+.vtt-popover select,
+.vtt-popover a,
+.vtt-popover label,
+.vtt-popover [role="button"],
+.vtt-settings-row,
+.vtt-conflict-banner,
+.vtt-status-text {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* ── Mic Icon ───────────────────────────────────────────── */
