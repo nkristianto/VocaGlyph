@@ -725,3 +725,74 @@
   border-color: rgba(255, 255, 255, 0.25);
   outline: none;
 }
+
+/* ── Hotkey Capture badge (Story 6.2) ───────────────────── */
+
+.vtt-hotkey-badge {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  font-weight: 600;
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, box-shadow 150ms;
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
+}
+
+.vtt-hotkey-badge:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Recording / capture-in-progress state */
+.vtt-hotkey-badge--capturing {
+  border-color: rgba(99, 179, 237, 0.70);
+  /* blue */
+  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.20);
+  animation: vtt-hotkey-pulse 1s ease-in-out infinite;
+  color: #63b3ed;
+}
+
+@keyframes vtt-hotkey-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.20);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(99, 179, 237, 0.10);
+  }
+}
+
+/* Conflict / error flash */
+.vtt-hotkey-badge--error {
+  border-color: rgba(248, 113, 113, 0.70);
+  /* red-400 */
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.20);
+  color: #f87171;
+  animation: vtt-hotkey-error 0.3s ease-in-out 4;
+}
+
+@keyframes vtt-hotkey-error {
+
+  0%,
+  100% {
+    background: rgba(248, 113, 113, 0.08);
+  }
+
+  50% {
+    background: rgba(248, 113, 113, 0.18);
+  }
+}
+
+.vtt-hotkey-badge__hint {
+  font-style: italic;
+  opacity: 0.80;
+  letter-spacing: 0.02em;
+}

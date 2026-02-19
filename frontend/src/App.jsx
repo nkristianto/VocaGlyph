@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage } from '../wailsjs/go/main/App';
+import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
@@ -9,8 +9,6 @@ const APP_STATES = {
     RECORDING: 'recording',
     PROCESSING: 'processing',
 };
-
-const HOTKEY_LABEL = '⌃Space';
 
 // ── RecordingHUD ─────────────────────────────────────────
 // Floating pill shown while recording is active.
@@ -81,9 +79,13 @@ const LANGUAGES = [
     { value: 'ja', label: 'Japanese' },
 ];
 
-function SettingsPanel({ config, onModelChange, onLanguageChange }) {
+function SettingsPanel({ config, onModelChange, onLanguageChange, onHotkeyChange }) {
     return (
         <div className="vtt-settings">
+            <div className="vtt-settings__row">
+                <span className="vtt-settings__label">Hotkey</span>
+                <HotkeyCapture current={config.hotkey} onChange={onHotkeyChange} />
+            </div>
             <div className="vtt-settings__row">
                 <span className="vtt-settings__label">Model</span>
                 <div className="vtt-model-picker" role="group" aria-label="Model size">
@@ -118,6 +120,93 @@ function SettingsPanel({ config, onModelChange, onLanguageChange }) {
     );
 }
 
+// ── HotkeyCapture ─────────────────────────────────────────
+// Displays the current hotkey badge. On click → enters capture mode;
+// the next modifier+key combo pressed becomes the new hotkey.
+function HotkeyCapture({ current, onChange }) {
+    const [capturing, setCapturing] = useState(false);
+    const [preview, setPreview] = useState(null);
+    const [error, setError] = useState(false);
+
+    // Format a combo string ("ctrl+space") to a symbol string ("⌃Space")
+    const format = useCallback((combo) => {
+        if (!combo) return '⌃Space';
+        const modSymbols = { ctrl: '⌃', control: '⌃', option: '⌥', alt: '⌥', shift: '⇧', cmd: '⌘', command: '⌘' };
+        const keyLabels = { space: 'Space', tab: 'Tab', return: 'Return', enter: 'Return' };
+        const parts = combo.toLowerCase().split('+');
+        const key = parts[parts.length - 1];
+        const mods = parts.slice(0, -1);
+        return mods.map(m => modSymbols[m] || m).join('') + (keyLabels[key] || key.toUpperCase());
+    }, []);
+
+    const handleKeyDown = useCallback((e) => {
+        if (!capturing) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Escape cancels capture
+        if (e.key === 'Escape') {
+            setCapturing(false);
+            setPreview(null);
+            return;
+        }
+
+        // Ignore bare modifier keys
+        if (['Control', 'Meta', 'Alt', 'Shift'].includes(e.key)) return;
+
+        // Build combo string
+        const parts = [];
+        if (e.ctrlKey) parts.push('ctrl');
+        if (e.altKey) parts.push('option');
+        if (e.shiftKey) parts.push('shift');
+        if (e.metaKey) parts.push('cmd');
+
+        // Map key to our format
+        const keyName = e.code === 'Space' ? 'space'
+            : e.key === 'Tab' ? 'tab'
+                : e.key === 'Enter' || e.key === 'Return' ? 'return'
+                    : e.key.toLowerCase();
+
+        if (parts.length === 0) return; // need at least one modifier
+        parts.push(keyName);
+
+        const combo = parts.join('+');
+        setPreview(combo);
+        setCapturing(false);
+
+        // Call backend
+        onChange(combo).catch(() => {
+            setError(true);
+            setTimeout(() => setError(false), 1200);
+        });
+    }, [capturing, onChange]);
+
+    useEffect(() => {
+        if (capturing) {
+            window.addEventListener('keydown', handleKeyDown, true);
+            return () => window.removeEventListener('keydown', handleKeyDown, true);
+        }
+    }, [capturing, handleKeyDown]);
+
+    const displayed = format(preview || current);
+
+    return (
+        <button
+            id="vtt-hotkey-capture"
+            className={[
+                'vtt-hotkey-badge',
+                capturing ? 'vtt-hotkey-badge--capturing' : '',
+                error ? 'vtt-hotkey-badge--error' : '',
+            ].join(' ').trim()}
+            onClick={() => { setCapturing(c => !c); setPreview(null); }}
+            title={capturing ? 'Press new shortcut… (Esc to cancel)' : 'Click to change hotkey'}
+            aria-label={`Hotkey: ${displayed}. ${capturing ? 'Press new shortcut' : 'Click to change'}`}
+        >
+            {capturing ? <span className="vtt-hotkey-badge__hint">press keys…</span> : displayed}
+        </button>
+    );
+}
+
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
@@ -127,7 +216,7 @@ function App() {
     const [elapsedSecs, setElapsedSecs] = useState(0);
     const [transcriptionText, setTranscriptionText] = useState('');
     const [showClipboardToast, setShowClipboardToast] = useState(false);
-    const [config, setConfig] = useState({ model: 'base', language: 'en' });
+    const [config, setConfig] = useState({ model: 'base', language: 'en', hotkey: 'ctrl+space' });
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -146,6 +235,13 @@ function App() {
         SetLanguage(language)
             .then(() => setConfig((c) => ({ ...c, language })))
             .catch((err) => console.error('SetLanguage failed:', err));
+    }
+
+    function handleHotkeyChange(combo) {
+        return SetHotkey(combo)
+            .then(() => setConfig((c) => ({ ...c, hotkey: combo })))
+            // Reject so HotkeyCapture can show error flash
+            .catch((err) => { console.error('SetHotkey failed:', err); return Promise.reject(err); });
     }
 
     // Listen for hotkey + audio events from Go backend
@@ -262,11 +358,19 @@ function App() {
                     </div>
                 ) : hotkeyConflict ? (
                     <div id="vtt-hotkey-badge" className="vtt-status-badge" style={{ color: 'var(--vtt-accent)' }}>
-                        ⚠ ⌃Space conflict — choose another key
+                        ⚠ Hotkey conflict — try another key
                     </div>
                 ) : (
                     <div id="vtt-hotkey-badge" className="vtt-status-badge" title="Press to toggle recording">
-                        {HOTKEY_LABEL} to record
+                        {(() => {
+                            const c = config.hotkey || 'ctrl+space';
+                            const mods = { ctrl: '⌃', option: '⌥', shift: '⇧', cmd: '⌘' };
+                            const parts = c.toLowerCase().split('+');
+                            const key = parts[parts.length - 1];
+                            const sym = parts.slice(0, -1).map(m => mods[m] || m).join('');
+                            const label = { space: 'Space', tab: 'Tab' }[key] || key.toUpperCase();
+                            return `${sym}${label} to record`;
+                        })()}
                     </div>
                 )}
 
@@ -291,6 +395,7 @@ function App() {
                     config={config}
                     onModelChange={handleModelChange}
                     onLanguageChange={handleLanguageChange}
+                    onHotkeyChange={handleHotkeyChange}
                 />
 
                 {/* HUD pill — overlays bottom of card while recording */}

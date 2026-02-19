@@ -12,11 +12,12 @@ import (
 type Config struct {
 	Model    string `json:"model"`    // "tiny", "base", "small"
 	Language string `json:"language"` // "en", "auto", "es", etc.
+	Hotkey   string `json:"hotkey"`   // e.g. "ctrl+space", "option+f"
 }
 
 // defaultConfig returns factory defaults.
 func defaultConfig() Config {
-	return Config{Model: "base", Language: "en"}
+	return Config{Model: "base", Language: "en", Hotkey: "ctrl+space"}
 }
 
 // ConfigService loads and saves user configuration.
@@ -62,6 +63,9 @@ func (c *ConfigService) Load() Config {
 	}
 	if cfg.Language == "" {
 		cfg.Language = d.Language
+	}
+	if cfg.Hotkey == "" {
+		cfg.Hotkey = d.Hotkey
 	}
 	return cfg
 }

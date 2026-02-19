@@ -6,6 +6,10 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetHotkey() {
+  return window['go']['main']['App']['GetHotkey']();
+}
+
 export function GetHotkeyStatus() {
   return window['go']['main']['App']['GetHotkeyStatus']();
 }
@@ -30,16 +34,24 @@ export function SetAudioService(arg1) {
   return window['go']['main']['App']['SetAudioService'](arg1);
 }
 
+export function SetConfigService(arg1) {
+  return window['go']['main']['App']['SetConfigService'](arg1);
+}
+
+export function SetHotkey(arg1) {
+  return window['go']['main']['App']['SetHotkey'](arg1);
+}
+
 export function SetHotkeyService(arg1) {
   return window['go']['main']['App']['SetHotkeyService'](arg1);
 }
 
-export function SetLaunchAtLogin(arg1) {
-  return window['go']['main']['App']['SetLaunchAtLogin'](arg1);
-}
-
 export function SetLanguage(arg1) {
   return window['go']['main']['App']['SetLanguage'](arg1);
+}
+
+export function SetLaunchAtLogin(arg1) {
+  return window['go']['main']['App']['SetLaunchAtLogin'](arg1);
 }
 
 export function SetModel(arg1) {

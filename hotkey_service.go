@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.design/x/hotkey"
@@ -11,6 +14,9 @@ import (
 
 // ErrHotkeyConflict is returned when the hotkey is already registered by another app.
 var ErrHotkeyConflict = errors.New("hotkey: key combination already registered by another application")
+
+// ErrHotkeyInvalid is returned when the hotkey string cannot be parsed.
+var ErrHotkeyInvalid = errors.New("hotkey: invalid key combination")
 
 // hotkeyBackend abstracts the real hotkey implementation so tests can use a mock.
 type hotkeyBackend interface {
@@ -23,18 +29,27 @@ type hotkeyBackend interface {
 // The hotkey.Hotkey is created lazily in Register() to avoid spawning CGo
 // goroutines at construction time — which would leak into unit tests.
 type realHotkeyBackend struct {
-	hk *hotkey.Hotkey
+	hk   *hotkey.Hotkey
+	mods []hotkey.Modifier
+	key  hotkey.Key
 }
 
 func newRealBackend() *realHotkeyBackend {
-	return &realHotkeyBackend{}
+	mods, key, _ := parseHotkey("ctrl+space")
+	return &realHotkeyBackend{mods: mods, key: key}
+}
+
+func newRealBackendFromCombo(combo string) (*realHotkeyBackend, error) {
+	mods, key, err := parseHotkey(combo)
+	if err != nil {
+		return nil, err
+	}
+	return &realHotkeyBackend{mods: mods, key: key}, nil
 }
 
 func (r *realHotkeyBackend) Register() error {
-	// Lazy creation — hotkey.New spawns internal goroutines; defer until needed.
-	r.hk = hotkey.New([]hotkey.Modifier{hotkey.ModCtrl}, hotkey.KeySpace)
-	err := r.hk.Register()
-	if err != nil {
+	r.hk = hotkey.New(r.mods, r.key)
+	if err := r.hk.Register(); err != nil {
 		return ErrHotkeyConflict
 	}
 	return nil
@@ -60,48 +75,124 @@ func (r *realHotkeyBackend) Keydown() <-chan struct{} {
 
 // HotkeyService manages global hotkey registration for voice-to-text.
 type HotkeyService struct {
+	mu         sync.Mutex
 	backend    hotkeyBackend
+	combo      string // current hotkey combo string e.g. "ctrl+space"
 	registered atomic.Bool
+	cancel     context.CancelFunc // cancels the listen goroutine
+	onTrigger  func()
 }
 
 // NewHotkeyService creates a HotkeyService backed by the real macOS hotkey API.
 func NewHotkeyService() *HotkeyService {
-	return &HotkeyService{backend: newRealBackend()}
+	return &HotkeyService{backend: newRealBackend(), combo: "ctrl+space"}
 }
 
 // newHotkeyServiceWithBackend creates a HotkeyService with a custom backend (for tests).
 func newHotkeyServiceWithBackend(b hotkeyBackend) *HotkeyService {
-	return &HotkeyService{backend: b}
+	return &HotkeyService{backend: b, combo: "ctrl+space"}
 }
 
 // Start registers the hotkey and launches a listener goroutine that calls onTrigger
 // each time the hotkey is pressed. The goroutine exits when ctx is cancelled.
 // Returns ErrHotkeyConflict if the key is taken by another app.
-func (s *HotkeyService) Start(ctx context.Context, onTrigger func()) error {
+func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func()) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// If a combo was provided, swap backend to use it.
+	if combo != "" && combo != s.combo {
+		b, err := newRealBackendFromCombo(combo)
+		if err != nil {
+			return err
+		}
+		s.backend = b
+		s.combo = combo
+	}
+
 	if err := s.backend.Register(); err != nil {
 		return err
 	}
 	s.registered.Store(true)
-	log.Printf("hotkey: ⌃Space registered")
+	s.onTrigger = onTrigger
+	log.Printf("hotkey: %s registered", s.combo)
 
+	listenCtx, cancel := context.WithCancel(ctx)
+	s.cancel = cancel
 	keydown := s.backend.Keydown()
-
 	go func() {
 		defer func() {
 			s.backend.Unregister() //nolint:errcheck
 			s.registered.Store(false)
-			log.Printf("hotkey: ⌃Space unregistered")
+			log.Printf("hotkey: %s unregistered", s.combo)
 		}()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-listenCtx.Done():
 				return
 			case _, ok := <-keydown:
 				if !ok {
 					return
 				}
-				log.Printf("hotkey: ⌃Space triggered")
+				log.Printf("hotkey: %s triggered", s.combo)
 				onTrigger()
+			}
+		}
+	}()
+	return nil
+}
+
+// Reregister swaps to a new hotkey combo at runtime without restarting the app.
+// Returns ErrHotkeyConflict if the new combo is taken, ErrHotkeyInvalid if unparseable.
+// On any error the original hotkey stays registered.
+func (s *HotkeyService) Reregister(newCombo string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newBackend, err := newRealBackendFromCombo(newCombo)
+	if err != nil {
+		return err
+	}
+	// Try registering the new key first — before unregistering the old one.
+	if err := newBackend.Register(); err != nil {
+		return err // conflict — old hotkey still live
+	}
+	// New key is registered; unregister old one and stop old listen goroutine.
+	if s.cancel != nil {
+		s.cancel()
+	}
+	oldCombo := s.combo
+
+	s.backend = newBackend
+	s.combo = newCombo
+	s.registered.Store(true)
+	log.Printf("hotkey: re-registered %s → %s", oldCombo, newCombo)
+
+	// Restart the listen goroutine with a new context.
+	// We need a parent context — use Background since we can't access app ctx here.
+	// The goroutine will unregister on app shutdown naturally.
+	listenCtx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	trigger := s.onTrigger
+	keydown := newBackend.Keydown()
+	go func() {
+		defer func() {
+			newBackend.Unregister() //nolint:errcheck
+			s.registered.Store(false)
+			log.Printf("hotkey: %s unregistered", newCombo)
+		}()
+		for {
+			select {
+			case <-listenCtx.Done():
+				return
+			case _, ok := <-keydown:
+				if !ok {
+					return
+				}
+				log.Printf("hotkey: %s triggered", newCombo)
+				if trigger != nil {
+					trigger()
+				}
 			}
 		}
 	}()
@@ -111,4 +202,110 @@ func (s *HotkeyService) Start(ctx context.Context, onTrigger func()) error {
 // IsRegistered reports whether the hotkey is currently registered.
 func (s *HotkeyService) IsRegistered() bool {
 	return s.registered.Load()
+}
+
+// Combo returns the currently active hotkey combo string.
+func (s *HotkeyService) Combo() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.combo
+}
+
+// ── parseHotkey ──────────────────────────────────────────────────────────────
+// Parses a combo string like "ctrl+space", "option+f", "ctrl+shift+a"
+// into golang.design/x/hotkey modifiers + key.
+
+var modMap = map[string]hotkey.Modifier{
+	"ctrl":    hotkey.ModCtrl,
+	"control": hotkey.ModCtrl,
+	"option":  hotkey.ModOption,
+	"alt":     hotkey.ModOption,
+	"shift":   hotkey.ModShift,
+	"cmd":     hotkey.ModCmd,
+	"command": hotkey.ModCmd,
+}
+
+var keyMap = map[string]hotkey.Key{
+	"space":  hotkey.KeySpace,
+	"tab":    hotkey.KeyTab,
+	"return": hotkey.KeyReturn,
+	"enter":  hotkey.KeyReturn,
+	"a":      hotkey.KeyA, "b": hotkey.KeyB, "c": hotkey.KeyC, "d": hotkey.KeyD,
+	"e": hotkey.KeyE, "f": hotkey.KeyF, "g": hotkey.KeyG, "h": hotkey.KeyH,
+	"i": hotkey.KeyI, "j": hotkey.KeyJ, "k": hotkey.KeyK, "l": hotkey.KeyL,
+	"m": hotkey.KeyM, "n": hotkey.KeyN, "o": hotkey.KeyO, "p": hotkey.KeyP,
+	"q": hotkey.KeyQ, "r": hotkey.KeyR, "s": hotkey.KeyS, "t": hotkey.KeyT,
+	"u": hotkey.KeyU, "v": hotkey.KeyV, "w": hotkey.KeyW, "x": hotkey.KeyX,
+	"y": hotkey.KeyY, "z": hotkey.KeyZ,
+	"0": hotkey.Key0, "1": hotkey.Key1, "2": hotkey.Key2, "3": hotkey.Key3,
+	"4": hotkey.Key4, "5": hotkey.Key5, "6": hotkey.Key6, "7": hotkey.Key7,
+	"8": hotkey.Key8, "9": hotkey.Key9,
+	"f1": hotkey.KeyF1, "f2": hotkey.KeyF2, "f3": hotkey.KeyF3, "f4": hotkey.KeyF4,
+	"f5": hotkey.KeyF5, "f6": hotkey.KeyF6, "f7": hotkey.KeyF7, "f8": hotkey.KeyF8,
+	"f9": hotkey.KeyF9, "f10": hotkey.KeyF10, "f11": hotkey.KeyF11, "f12": hotkey.KeyF12,
+}
+
+// parseHotkey parses a combo string into hotkey modifiers and key.
+func parseHotkey(combo string) ([]hotkey.Modifier, hotkey.Key, error) {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(combo)), "+")
+	if len(parts) < 2 {
+		return nil, 0, fmt.Errorf("%w: %q (need at least one modifier)", ErrHotkeyInvalid, combo)
+	}
+	keyPart := parts[len(parts)-1]
+	modParts := parts[:len(parts)-1]
+
+	key, ok := keyMap[keyPart]
+	if !ok {
+		return nil, 0, fmt.Errorf("%w: unknown key %q", ErrHotkeyInvalid, keyPart)
+	}
+
+	var mods []hotkey.Modifier
+	seen := map[string]bool{}
+	for _, m := range modParts {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		mod, ok := modMap[m]
+		if !ok {
+			return nil, 0, fmt.Errorf("%w: unknown modifier %q", ErrHotkeyInvalid, m)
+		}
+		mods = append(mods, mod)
+	}
+	if len(mods) == 0 {
+		return nil, 0, fmt.Errorf("%w: no valid modifier in %q", ErrHotkeyInvalid, combo)
+	}
+	return mods, key, nil
+}
+
+// FormatHotkey converts a combo string to a user-friendly display string.
+// e.g. "ctrl+space" → "⌃Space", "option+f" → "⌥F", "ctrl+shift+a" → "⌃⇧A"
+func FormatHotkey(combo string) string {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(combo)), "+")
+	if len(parts) < 2 {
+		return combo
+	}
+	modSymbols := map[string]string{
+		"ctrl": "⌃", "control": "⌃",
+		"option": "⌥", "alt": "⌥",
+		"shift": "⇧",
+		"cmd":   "⌘", "command": "⌘",
+	}
+	keyDisplay := map[string]string{
+		"space": "Space", "tab": "Tab", "return": "Return", "enter": "Return",
+	}
+
+	var out strings.Builder
+	for _, p := range parts[:len(parts)-1] {
+		if s, ok := modSymbols[p]; ok {
+			out.WriteString(s)
+		}
+	}
+	key := parts[len(parts)-1]
+	if d, ok := keyDisplay[key]; ok {
+		out.WriteString(d)
+	} else {
+		out.WriteString(strings.ToUpper(key))
+	}
+	return out.String()
 }

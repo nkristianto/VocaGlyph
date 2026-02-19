@@ -14,7 +14,9 @@ import (
 // hotkeyStarter is the minimal interface the App needs from HotkeyService.
 // Using an interface keeps real CGo goroutines out of unit tests.
 type hotkeyStarter interface {
-	Start(ctx context.Context, onTrigger func()) error
+	Start(ctx context.Context, combo string, onTrigger func()) error
+	Reregister(combo string) error
+	Combo() string
 	IsRegistered() bool
 }
 
@@ -104,9 +106,13 @@ func (a *App) startup(ctx context.Context) {
 	if a.hotkeys != nil {
 		hkCtx, cancel := context.WithCancel(ctx)
 		a.hotkeyCtx = cancel
-		if err := a.hotkeys.Start(hkCtx, a.onHotkeyTriggered); err != nil {
+		combo := "ctrl+space"
+		if a.config != nil {
+			combo = a.config.Load().Hotkey
+		}
+		if err := a.hotkeys.Start(hkCtx, combo, a.onHotkeyTriggered); err != nil {
 			if errors.Is(err, ErrHotkeyConflict) {
-				log.Printf("hotkey: ⌃Space already registered by another app")
+				log.Printf("hotkey: %s already registered by another app", combo)
 				runtime.EventsEmit(ctx, "hotkey:conflict")
 			} else {
 				log.Printf("hotkey: failed to register: %v", err)
@@ -268,6 +274,41 @@ func (a *App) SetLanguage(lang string) error {
 	cfg := a.config.Load()
 	cfg.Language = lang
 	return a.config.Save(cfg)
+}
+
+// GetHotkey returns the current hotkey combo string (e.g. "ctrl+space").
+func (a *App) GetHotkey() string {
+	if a.hotkeys != nil {
+		return a.hotkeys.Combo()
+	}
+	if a.config != nil {
+		return a.config.Load().Hotkey
+	}
+	return "ctrl+space"
+}
+
+// SetHotkey changes the global hotkey to the given combo string.
+// The change takes effect immediately (live re-register) and is persisted.
+// Emits "hotkey:conflict" event and returns an error if the key is taken.
+func (a *App) SetHotkey(combo string) error {
+	if a.hotkeys == nil {
+		return nil
+	}
+	if err := a.hotkeys.Reregister(combo); err != nil {
+		a.mu.RLock()
+		c := a.ctx
+		a.mu.RUnlock()
+		if c != nil {
+			runtime.EventsEmit(c, "hotkey:conflict")
+		}
+		return err
+	}
+	if a.config != nil {
+		cfg := a.config.Load()
+		cfg.Hotkey = combo
+		return a.config.Save(cfg)
+	}
+	return nil
 }
 
 // GetStatus returns the current app status displayed in the UI.
