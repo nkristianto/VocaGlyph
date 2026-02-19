@@ -35,6 +35,29 @@ function RecordingHUD({ elapsedSecs }) {
     );
 }
 
+// ── TranscriptionOverlay ──────────────────────────────────
+// Shows transcribed text with a 1.5s draining progress bar.
+function TranscriptionOverlay({ text }) {
+    return (
+        <div
+            id="vtt-overlay"
+            className="vtt-overlay"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+        >
+            <div className="vtt-overlay__header">
+                <span className="vtt-overlay__check">✓</span>
+                <span className="vtt-overlay__label">Transcribed</span>
+            </div>
+            <p id="vtt-overlay-text" className="vtt-overlay__text">{text}</p>
+            <div className="vtt-overlay__progress">
+                <div className="vtt-overlay__progress-bar" />
+            </div>
+        </div>
+    );
+}
+
 function App() {
     const [appState, setAppState] = useState(APP_STATES.IDLE);
     const [statusText, setStatusText] = useState('Ready to dictate');
@@ -42,6 +65,7 @@ function App() {
     const [hotkeyConflict, setHotkeyConflict] = useState(false);
     const [micDenied, setMicDenied] = useState(false);
     const [elapsedSecs, setElapsedSecs] = useState(0);
+    const [transcriptionText, setTranscriptionText] = useState('');
 
     // Load initial values from Go backend
     useEffect(() => {
@@ -69,10 +93,16 @@ function App() {
             setAppState(APP_STATES.IDLE);
         });
 
+        const unsubTranscription = EventsOn('transcription:result', (text) => {
+            setTranscriptionText(text);
+            setAppState(APP_STATES.PROCESSING);
+        });
+
         return () => {
             unsubTrigger();
             unsubConflict();
             unsubMicDenied();
+            unsubTranscription();
         };
     }, []);
 
@@ -81,8 +111,11 @@ function App() {
         if (appState === APP_STATES.RECORDING) setStatusText('Recording…');
         if (appState === APP_STATES.PROCESSING) {
             setStatusText('Transcribing…');
-            // Auto-return to idle after a short delay (Story 3 will replace this)
-            const t = setTimeout(() => setAppState(APP_STATES.IDLE), 1500);
+            // Auto-return to idle after overlay holds for 1.5s
+            const t = setTimeout(() => {
+                setAppState(APP_STATES.IDLE);
+                setTranscriptionText('');
+            }, 1600); // slightly after 1.5s progress bar drains
             return () => clearTimeout(t);
         }
         if (appState === APP_STATES.IDLE) {
@@ -177,6 +210,11 @@ function App() {
             {/* HUD pill — visible during recording only */}
             {appState === APP_STATES.RECORDING && (
                 <RecordingHUD elapsedSecs={elapsedSecs} />
+            )}
+
+            {/* Transcription overlay — visible after recording stops with result */}
+            {appState === APP_STATES.PROCESSING && transcriptionText && (
+                <TranscriptionOverlay text={transcriptionText} />
             )}
         </>
     );

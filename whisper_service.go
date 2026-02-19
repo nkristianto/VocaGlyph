@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	// NOTE: This import requires the go.mod replace directive pointing to ../whisper.cpp/bindings/go
 	// and libwhisper.a built with GGML_METAL=1. See the Makefile for build instructions.
@@ -126,7 +127,9 @@ func (s *WhisperService) Start(whisperCh <-chan []float32, onResult func(string)
 				continue
 			}
 			log.Printf("whisper: transcribing %d samples (%.2fs)…", len(pcm), float64(len(pcm))/16000)
+			t0 := time.Now()
 			text, err := s.backend.Transcribe(pcm)
+			latency := time.Since(t0)
 			if err != nil {
 				log.Printf("whisper: transcription error: %v", err)
 				continue
@@ -136,7 +139,11 @@ func (s *WhisperService) Start(whisperCh <-chan []float32, onResult func(string)
 				log.Printf("whisper: empty transcription — skipping")
 				continue
 			}
-			log.Printf("whisper: → %q", text)
+			if latency > 500*time.Millisecond {
+				log.Printf("whisper: ⚠ slow transcription %q (%dms — exceeds 500ms NFR)", text, latency.Milliseconds())
+			} else {
+				log.Printf("whisper: ✓ %q (%dms)", text, latency.Milliseconds())
+			}
 			onResult(text)
 		}
 	}()
