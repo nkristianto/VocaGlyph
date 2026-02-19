@@ -5,3 +5,11 @@
 export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
+
+export function Quit() {
+  return window['go']['main']['App']['Quit']();
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
+}

@@ -18,21 +18,20 @@ var assets embed.FS
 func main() {
 	app := NewApp()
 
-	// Build system tray menu.
-	// Callbacks use app.ShowWindow() and app.Quit() — safe accessor methods
-	// that guard against nil context if called before startup() completes.
+	// Application menu (File / Edit style top-bar entries).
+	// NOTE: A true clickable NSStatusItem (right-side menu bar icon) requires
+	// a CGo Objective-C bridge — tracked as Story 1.2.
+	// This menu provides keyboard-shortcut access to Settings and Quit
+	// while the window is focused.
 	appMenu := menu.NewMenu()
-	appMenu.Append(menu.Text("🎙 voice-to-text", nil, nil))
-	appMenu.Append(menu.Separator())
-	appMenu.Append(menu.Text("Ready to dictate", nil, nil))
-	appMenu.Append(menu.Separator())
-	appMenu.Append(menu.Text("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
+	fileMenu := appMenu.AddSubmenu("voice-to-text")
+	fileMenu.AddText("Settings", keys.CmdOrCtrl(","), func(_ *menu.CallbackData) {
 		app.ShowWindow()
-	}))
-	appMenu.Append(menu.Separator())
-	appMenu.Append(menu.Text("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+	})
+	fileMenu.AddSeparator()
+	fileMenu.AddText("Quit", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
 		app.Quit()
-	}))
+	})
 
 	err := wails.Run(&options.App{
 		Title:  "voice-to-text",
@@ -41,7 +40,7 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 18, G: 18, B: 18, A: 0}, // A:0 — let macOS blur be the background (L1 fix)
+		BackgroundColour: &options.RGBA{R: 18, G: 18, B: 18, A: 0},
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
@@ -56,12 +55,15 @@ func main() {
 				Message: "A fast, private, offline dictation tool.",
 			},
 		},
-		StartHidden:       true,
+		// Window is visible on launch during dev/Story 1.1.
+		// Story 1.2 will add the native NSStatusItem via CGo so the window
+		// starts hidden and is shown only via the menu bar icon.
+		StartHidden:       false,
 		HideWindowOnClose: true,
 		Menu:              appMenu,
 	})
 
 	if err != nil {
-		log.Fatalf("fatal: wails.Run failed: %v", err) // M1 fix: structured fatal log with exit code
+		log.Fatalf("fatal: wails.Run failed: %v", err)
 	}
 }
