@@ -1,6 +1,6 @@
 # Story 1.2: Launch at Login Toggle
 
-**Status:** review
+**Status:** done
 
 ## Story
 

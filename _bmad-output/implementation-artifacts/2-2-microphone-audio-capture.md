@@ -1,6 +1,6 @@
 # Story 2.2: Microphone Audio Capture
 
-**Status:** review
+**Status:** done
 
 ## Story
 

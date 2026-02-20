@@ -70,6 +70,10 @@ export function SetModel(arg1) {
   return window['go']['main']['App']['SetModel'](arg1);
 }
 
+export function SetModelService(arg1) {
+  return window['go']['main']['App']['SetModelService'](arg1);
+}
+
 export function SetOutputService(arg1) {
   return window['go']['main']['App']['SetOutputService'](arg1);
 }

@@ -1,6 +1,6 @@
 # Story 1.3: Design System & UI Components
 
-**Status:** review
+**Status:** done
 
 ## Story
 

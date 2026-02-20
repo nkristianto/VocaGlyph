@@ -11,6 +11,35 @@ inputDocuments:
 
 This document provides the complete epic and story breakdown for voice-to-text, decomposing the requirements from the PRD and Architecture into implementable stories.
 
+## Implementation Progress
+
+| Epic | Story | Status |
+|------|-------|--------|
+| Epic 1 | 1.1 Wails Scaffold & Menu Bar | ✅ done |
+| Epic 1 | 1.2 Launch at Login | ✅ done |
+| Epic 1 | 1.3 Design System & UI | ✅ done |
+| Epic 1 | 7.1 True Menu Bar Agent Mode | ✅ done |
+| Epic 1 | 7.2 Settings Panel — Model & Language | ✅ done |
+| Epic 2 | 2.1 Global Hotkey Registration | ✅ done |
+| Epic 2 | 2.2 Microphone Audio Capture | ✅ done |
+| Epic 2 | 2.3 Microphone Permission Request | ✅ done |
+| Epic 2 | 2.4 Recording Visual Feedback | ✅ done |
+| Epic 3 | 3.1 whisper.cpp CGo Integration | ✅ done |
+| Epic 3 | 3.2 Audio-to-Text Transcription | ✅ done |
+| Epic 3 | 3.3 Transcription Overlay Display | ✅ done |
+| Epic 4 | 4.1 Paste to Active Application | ✅ done |
+| Epic 4 | 4.2 Accessibility Permission & Clipboard Fallback | ✅ done |
+| Epic 5 | 5.1 Model Selection & Download | ✅ done |
+| Epic 5 | 5.2 First-Run Model Detection | ✅ done |
+| Epic 5 | 5.3 Model Hot-Swap | ✅ done |
+| Epic 6 | 6.1 Settings Persistence | ✅ done |
+| Epic 6 | 6.2 Hotkey Reconfiguration | ✅ done |
+| Epic 6 | 6.3 Language Selection | ✅ done |
+| — | Bug Fixes (quit panic, window drag, min size) | ✅ done |
+
+> **🎉 All epics complete.** Epics 1–6 fully implemented and verified. The app supports hotkey recording, mic capture, whisper transcription (tiny/base/small models), paste to active app, settings persistence, and in-app model download with first-run guided setup.
+
+
 ## Requirements Inventory
 
 ### Functional Requirements

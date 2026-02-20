@@ -1,6 +1,6 @@
 # Story 2.3: Microphone Permission Request
 
-**Status:** review
+**Status:** done
 
 ## Story
 

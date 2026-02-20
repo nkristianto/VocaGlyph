@@ -1,6 +1,6 @@
 # Story 2.1: Global Hotkey Registration
 
-**Status:** review
+**Status:** done
 
 ## Story
 
@@ -95,3 +95,5 @@ So that I can start dictation without switching windows or clicking.
 
 ## Change Log
 - 2026-02-20: Story 2.1 complete — HotkeyService, 4 tests, Wails event bridge, React listener. 15/15 pass.
+- 2026-02-20: **Hotkey reregistration** — added `Reregister(combo)` to update the active hotkey live without restarting. Wires into `SetHotkey()` in `app.go`.
+- 2026-02-20: **Clean shutdown** — added `shuttingDown atomic.Bool`, `doneCh chan struct{}`, and `Stop()` method. `Stop()` calls `backend.Unregister()` synchronously while the Cocoa event loop is still alive (prevents GCD workq crash), then waits (up to 200ms) for the goroutine's `doneCh` to close before returning. `app.Quit()` calls `hs.Stop()` before `runtime.Quit()`.
