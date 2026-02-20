@@ -62,6 +62,27 @@ var modelRegistry = []modelEntry{
 		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
 		SHA256:    "",
 	},
+	{
+		Name:      "medium",
+		FileName:  "ggml-medium.en.bin",
+		SizeLabel: "769 MB",
+		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
+		SHA256:    "",
+	},
+	{
+		Name:      "large-v3-turbo",
+		FileName:  "ggml-large-v3-turbo.bin",
+		SizeLabel: "838 MB",
+		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+		SHA256:    "",
+	},
+	{
+		Name:      "large-v3",
+		FileName:  "ggml-large-v3.bin",
+		SizeLabel: "3.1 GB",
+		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+		SHA256:    "",
+	},
 }
 
 // ModelStatus values sent to the frontend.

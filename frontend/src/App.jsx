@@ -69,11 +69,14 @@ function ClipboardToast() {
 
 // ── SettingsPanel ─────────────────────────────────────────
 // Model picker + language selector, collapsed below the divider.
-const MODELS = ['tiny', 'base', 'small'];
+const MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3'];
 const MODEL_META = {
     tiny: { label: 'Tiny', size: '75 MB' },
     base: { label: 'Base', size: '142 MB' },
     small: { label: 'Small', size: '466 MB' },
+    medium: { label: 'Medium', size: '769 MB' },
+    'large-v3-turbo': { label: 'Large v3 Turbo ⭐', size: '838 MB' },
+    'large-v3': { label: 'Large v3', size: '3.1 GB' },
 };
 const LANGUAGES = [
     { value: 'en', label: 'English' },
@@ -332,7 +335,7 @@ function App() {
     const [transcriptionText, setTranscriptionText] = useState('');
     const [showClipboardToast, setShowClipboardToast] = useState(false);
     const [config, setConfig] = useState({ model: 'base', language: 'en', hotkey: 'ctrl+space' });
-    const [modelStatuses, setModelStatuses] = useState({ tiny: 'not_downloaded', base: 'not_downloaded', small: 'not_downloaded' });
+    const [modelStatuses, setModelStatuses] = useState({ tiny: 'not_downloaded', base: 'not_downloaded', small: 'not_downloaded', medium: 'not_downloaded', 'large-v3-turbo': 'not_downloaded', 'large-v3': 'not_downloaded' });
     const [showModelMissing, setShowModelMissing] = useState(false);
 
     // Load initial values from Go backend
