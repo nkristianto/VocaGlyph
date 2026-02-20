@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -14,6 +15,17 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// httpClient is shared across all downloads and forces HTTP/1.1.
+// HuggingFace CDN sometimes sends HTTP/2 GOAWAY frames mid-transfer which
+// crash Go's internal h2 read-loop goroutine; disabling H2 avoids this.
+var httpClient = &http.Client{
+	Transport: &http.Transport{
+		TLSClientConfig:    &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSNextProto:       make(map[string]func(string, *tls.Conn) http.RoundTripper), // disable HTTP/2
+		DisableCompression: false,
+	},
+}
 
 // modelEntry describes a known whisper.cpp model available for download.
 type modelEntry struct {
@@ -147,6 +159,15 @@ func (ms *ModelService) DownloadModel(name string) error {
 func (ms *ModelService) runDownload(ctx context.Context, entry modelEntry) {
 	name := entry.Name
 	defer func() {
+		// Recover from any unexpected panics so the app never crashes from a
+		// failed download (e.g. HTTP/2 transport bugs, nil dereferences).
+		if r := recover(); r != nil {
+			log.Printf("model: download panic recovered for %s: %v", name, r)
+			if ctx != nil {
+				runtime.EventsEmit(ctx, "model:download:error",
+					map[string]string{"name": name, "err": fmt.Sprintf("unexpected error: %v", r)})
+			}
+		}
 		ms.mu.Lock()
 		delete(ms.inProgress, name)
 		ms.mu.Unlock()
@@ -176,7 +197,7 @@ func (ms *ModelService) runDownload(ctx context.Context, entry modelEntry) {
 	}
 	defer os.Remove(tmpPath) // clean up temp file on any error path
 
-	resp, err := http.Get(entry.URL) //nolint:noctx — intentional long-running download
+	resp, err := httpClient.Get(entry.URL) //nolint:noctx — intentional long-running download
 	if err != nil {
 		f.Close()
 		log.Printf("model: http get: %v", err)
