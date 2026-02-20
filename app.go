@@ -142,28 +142,31 @@ func (a *App) startup(ctx context.Context) {
 	if a.whisper != nil {
 		if err := a.whisper.Load(); err != nil {
 			if errors.Is(err, ErrModelNotFound) {
-				log.Printf("whisper: model missing — download ggml-base.en.bin to ~/.voice-to-text/models/")
+				log.Printf("whisper: model missing — download a model to ~/.voice-to-text/models/")
 				runtime.EventsEmit(ctx, "model:missing")
 			} else {
 				log.Printf("whisper: load error: %v", err)
 				runtime.EventsEmit(ctx, "model:missing")
 			}
-		} else {
-			// Start consuming whisperCh in background.
-			a.whisper.Start(a.whisperCh, func(text string) {
-				a.mu.RLock()
-				c := a.ctx
-				a.mu.RUnlock()
-				// Emit result to UI first so the overlay appears immediately.
-				runtime.EventsEmit(c, "transcription:result", text)
-				// Then attempt to paste; fall back to clipboard if needed.
-				if a.output != nil {
-					a.output.Send(text, func() {
-						runtime.EventsEmit(c, "paste:fallback")
-					})
-				}
-			})
 		}
+		// Always start the consumer goroutine — it skips PCM buffers when the
+		// model is not yet loaded (!s.loaded), so it is safe to call even on the
+		// first-run path where Load() returned ErrModelNotFound. After the user
+		// downloads a model and SetModel() calls Reload(), the goroutine will
+		// automatically start transcribing because s.loaded becomes true.
+		a.whisper.Start(a.whisperCh, func(text string) {
+			a.mu.RLock()
+			c := a.ctx
+			a.mu.RUnlock()
+			// Emit result to UI first so the overlay appears immediately.
+			runtime.EventsEmit(c, "transcription:result", text)
+			// Then attempt to paste; fall back to clipboard if needed.
+			if a.output != nil {
+				a.output.Send(text, func() {
+					runtime.EventsEmit(c, "paste:fallback")
+				})
+			}
+		})
 	}
 }
 
@@ -176,6 +179,14 @@ func (a *App) onHotkeyTriggered() {
 
 	if a.audio == nil {
 		runtime.EventsEmit(ctx, "hotkey:triggered")
+		return
+	}
+
+	// If no model is loaded yet, show the download banner instead of starting
+	// a recording that will silently produce no transcription output.
+	if a.whisper != nil && !a.whisper.IsLoaded() {
+		log.Printf("hotkey: blocked — whisper model not loaded")
+		runtime.EventsEmit(ctx, "model:missing")
 		return
 	}
 

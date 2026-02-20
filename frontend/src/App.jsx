@@ -376,9 +376,14 @@ function App() {
 
     // Listen for hotkey + audio events from Go backend
     useEffect(() => {
-        // model:missing — fired on startup when no model is installed
+        // model:missing — fired at startup OR when hotkey pressed with no model loaded
         const unsubModelMissing = EventsOn('model:missing', () => {
             setShowModelMissing(true);
+            // Flash the status text so the user notices even if banner was already showing
+            setStatusText('⚠ No model — download one below');
+            setTimeout(() => {
+                GetStatus().then(setStatusText).catch(() => setStatusText('Ready to dictate'));
+            }, 2500);
         });
 
         // model:download:progress — update downloading:N status
