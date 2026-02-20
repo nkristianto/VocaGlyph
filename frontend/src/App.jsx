@@ -11,25 +11,37 @@ const APP_STATES = {
 };
 
 // ── RecordingHUD ─────────────────────────────────────────
-// Floating pill shown while recording is active.
+// Two-part indicator shown while recording is active:
+//   1. vtt-hud  — replaces the bottom of the app card (existing)
+//   2. vtt-listening-pill — fixed viewport overlay visible anywhere on screen
 function RecordingHUD({ elapsedSecs }) {
     const mm = String(Math.floor(elapsedSecs / 60)).padStart(1, '0');
     const ss = String(elapsedSecs % 60).padStart(2, '0');
 
     return (
-        <div className="vtt-hud" role="status" aria-label="Recording in progress">
-            <span className="vtt-hud__dot" />
-            <div className="vtt-hud__wave" aria-hidden="true">
-                <span className="vtt-hud__bar" />
-                <span className="vtt-hud__bar" />
-                <span className="vtt-hud__bar" />
-                <span className="vtt-hud__bar" />
-                <span className="vtt-hud__bar" />
-                <span className="vtt-hud__bar" />
+        <>
+            {/* In-card HUD */}
+            <div className="vtt-hud" role="status" aria-label="Recording in progress">
+                <span className="vtt-hud__dot" />
+                <div className="vtt-hud__wave" aria-hidden="true">
+                    <span className="vtt-hud__bar" />
+                    <span className="vtt-hud__bar" />
+                    <span className="vtt-hud__bar" />
+                    <span className="vtt-hud__bar" />
+                    <span className="vtt-hud__bar" />
+                    <span className="vtt-hud__bar" />
+                </div>
+                <span className="vtt-hud__label">Listening</span>
+                <span id="vtt-hud-timer" className="vtt-hud__timer">{mm}:{ss}</span>
             </div>
-            <span className="vtt-hud__label">Rec</span>
-            <span id="vtt-hud-timer" className="vtt-hud__timer">{mm}:{ss}</span>
-        </div>
+
+            {/* Floating screen-level pill — visible even when window is behind other apps */}
+            <div className="vtt-listening-pill" role="status" aria-live="assertive">
+                <span className="vtt-listening-pill__dot" />
+                <span className="vtt-listening-pill__text">Listening…</span>
+                <span className="vtt-listening-pill__timer">{mm}:{ss}</span>
+            </div>
+        </>
     );
 }
 
