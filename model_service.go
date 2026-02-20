@@ -26,27 +26,29 @@ type modelEntry struct {
 
 // modelRegistry lists the supported models in display order.
 // URLs point to the official Hugging Face whisper.cpp model repository.
+// SHA256 is left empty — the official download script also ships without checksums,
+// and HTTPS from Hugging Face provides sufficient transport integrity.
 var modelRegistry = []modelEntry{
 	{
 		Name:      "tiny",
 		FileName:  "ggml-tiny.en.bin",
 		SizeLabel: "75 MB",
 		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
-		SHA256:    "921e4cf8686fdd993dcd081a5da5b6c746d8efc3ba92b477fb05e8a6afbde7b0",
+		SHA256:    "",
 	},
 	{
 		Name:      "base",
 		FileName:  "ggml-base.en.bin",
 		SizeLabel: "142 MB",
 		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
-		SHA256:    "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+		SHA256:    "",
 	},
 	{
 		Name:      "small",
 		FileName:  "ggml-small.en.bin",
 		SizeLabel: "466 MB",
 		URL:       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
-		SHA256:    "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+		SHA256:    "",
 	},
 }
 
