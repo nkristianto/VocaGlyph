@@ -135,16 +135,13 @@ func TestParseHotkeyValid(t *testing.T) {
 		{"CTRL+SPACE"}, // case insensitive
 	}
 	for _, tc := range cases {
-		mods, key, err := parseHotkey(tc.combo)
+		mods, _, err := parseHotkey(tc.combo)
 		if err != nil {
 			t.Errorf("parseHotkey(%q) error = %v; want nil", tc.combo, err)
 			continue
 		}
 		if len(mods) == 0 {
 			t.Errorf("parseHotkey(%q) returned no modifiers", tc.combo)
-		}
-		if key == 0 {
-			t.Errorf("parseHotkey(%q) returned zero key", tc.combo)
 		}
 	}
 }

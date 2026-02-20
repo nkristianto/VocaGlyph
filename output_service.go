@@ -1,10 +1,19 @@
 package main
 
+/*
+#cgo LDFLAGS: -framework ApplicationServices -framework Foundation
+#include <stdlib.h>
+#include "keystroke_darwin.h"
+*/
+import "C"
+
 import (
 	"fmt"
 	"log"
 	"os/exec"
 	"strings"
+	"time"
+	"unsafe"
 )
 
 // outputter abstracts the two output strategies so we can swap them in tests.
@@ -35,6 +44,7 @@ func (s *OutputService) Send(text string, onFallback func()) {
 	if text == "" {
 		return
 	}
+	start := time.Now()
 	if err := s.backend.Paste(text); err != nil {
 		log.Printf("output: paste failed (%v) — falling back to clipboard", err)
 		if cbErr := s.backend.CopyToClipboard(text); cbErr != nil {
@@ -46,7 +56,7 @@ func (s *OutputService) Send(text string, onFallback func()) {
 			onFallback()
 		}
 	} else {
-		log.Printf("output: pasted %d chars via osascript", len(text))
+		log.Printf("output: pasted %d chars via CGO CoreGraphics in %s", len(text), time.Since(start))
 	}
 }
 
@@ -54,17 +64,20 @@ func (s *OutputService) Send(text string, onFallback func()) {
 
 type realOutputter struct{}
 
-// Paste uses osascript to keystroke text into the frontmost application.
-// Special characters (quotes, backslashes) are escaped to prevent injection.
+// Paste uses native CGEventPost to keystroke text into the OS queue with zero latency.
 func (r *realOutputter) Paste(text string) error {
-	escaped := escapeForAppleScript(text)
-	script := fmt.Sprintf(
-		`tell application "System Events" to keystroke "%s"`,
-		escaped,
-	)
-	cmd := exec.Command("osascript", "-e", script)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("osascript: %w — %s", err, strings.TrimSpace(string(out)))
+	// 1. Check if we have accessibility permissions required for CGEventPost.
+	// We pass true to prompt the user if they haven't granted it yet.
+	if !C.is_accessibility_trusted(C.bool(true)) {
+		return fmt.Errorf("accessibility permission denied — falling back to clipboard")
+	}
+
+	cstr := C.CString(text)
+	defer C.free(unsafe.Pointer(cstr))
+
+	success := C.post_keystrokes(cstr)
+	if !success {
+		return fmt.Errorf("CGEventPost failed to create events")
 	}
 	return nil
 }
@@ -77,13 +90,4 @@ func (r *realOutputter) CopyToClipboard(text string) error {
 		return fmt.Errorf("pbcopy: %w — %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// escapeForAppleScript escapes characters that are special inside an
-// AppleScript double-quoted string literal.
-func escapeForAppleScript(s string) string {
-	// Backslash must be first to avoid double-escaping.
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	return s
 }

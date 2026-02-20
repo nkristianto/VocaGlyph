@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"log"
-	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -26,13 +25,15 @@ func main() {
 	cfgSvc := NewConfigService()
 	app.SetConfigService(cfgSvc)
 	cfg := cfgSvc.Load()
-	home, _ := os.UserHomeDir()
-	modelPath := home + "/.voice-to-text/models/ggml-" + cfg.Model + ".en.bin"
-	app.SetWhisperService(NewWhisperService(modelPath))
-	app.SetOutputService(NewOutputService())
 
 	// Model download/status service.
-	app.SetModelService(NewModelService())
+	modelSvc := NewModelService()
+	app.SetModelService(modelSvc)
+
+	// Initialize whisper service with the correct filename for the model
+	modelPath := modelSvc.ModelPath(cfg.Model)
+	app.SetWhisperService(NewWhisperService(modelPath))
+	app.SetOutputService(NewOutputService())
 
 	// Application menu — keyboard shortcuts while window is focused.
 	appMenu := menu.NewMenu()

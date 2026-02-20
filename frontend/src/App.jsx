@@ -10,40 +10,7 @@ const APP_STATES = {
     PROCESSING: 'processing',
 };
 
-// ── RecordingHUD ─────────────────────────────────────────
-// Two-part indicator shown while recording is active:
-//   1. vtt-hud  — replaces the bottom of the app card (existing)
-//   2. vtt-listening-pill — fixed viewport overlay visible anywhere on screen
-function RecordingHUD({ elapsedSecs }) {
-    const mm = String(Math.floor(elapsedSecs / 60)).padStart(1, '0');
-    const ss = String(elapsedSecs % 60).padStart(2, '0');
 
-    return (
-        <>
-            {/* In-card HUD */}
-            <div className="vtt-hud" role="status" aria-label="Recording in progress">
-                <span className="vtt-hud__dot" />
-                <div className="vtt-hud__wave" aria-hidden="true">
-                    <span className="vtt-hud__bar" />
-                    <span className="vtt-hud__bar" />
-                    <span className="vtt-hud__bar" />
-                    <span className="vtt-hud__bar" />
-                    <span className="vtt-hud__bar" />
-                    <span className="vtt-hud__bar" />
-                </div>
-                <span className="vtt-hud__label">Listening</span>
-                <span id="vtt-hud-timer" className="vtt-hud__timer">{mm}:{ss}</span>
-            </div>
-
-            {/* Floating screen-level pill — visible even when window is behind other apps */}
-            <div className="vtt-listening-pill" role="status" aria-live="assertive">
-                <span className="vtt-listening-pill__dot" />
-                <span className="vtt-listening-pill__text">Listening…</span>
-                <span className="vtt-listening-pill__timer">{mm}:{ss}</span>
-            </div>
-        </>
-    );
-}
 
 // ── TranscriptionOverlay ──────────────────────────────────
 // Shows transcribed text with a 1.5s draining progress bar.
@@ -143,39 +110,53 @@ function SettingsPanel({ config, modelStatuses, onModelChange, onModelDownload, 
             </div>
             <div className="vtt-settings__row">
                 <span className="vtt-settings__label">Model</span>
-                <div className="vtt-model-picker" role="group" aria-label="Model size">
+                <select
+                    id="vtt-model-select"
+                    className="vtt-select-field"
+                    value={config.model}
+                    onChange={(e) => {
+                        const m = e.target.value;
+                        const st = modelStatuses[m] || 'not_downloaded';
+                        const isDone = st === 'downloaded';
+                        const isDownloading = st.startsWith('downloading');
+
+                        if (isDone) {
+                            onModelChange(m);
+                        } else if (!isDownloading) {
+                            onModelDownload(m);
+                        }
+                    }}
+                    aria-label="Model size"
+                    style={{ flex: 1, textAlign: 'right' }}
+                >
                     {MODELS.map((m) => {
                         const st = modelStatuses[m] || 'not_downloaded';
-                        const isActive = config.model === m;
                         const isDownloading = st.startsWith('downloading');
                         const pct = isDownloading ? parseInt(st.split(':')[1] || '0', 10) : 0;
                         const isDone = st === 'downloaded';
+
+                        let statusText = '';
+                        if (isDone) statusText = '✅';
+                        else if (isDownloading) statusText = `⬇ ${pct}%`;
+                        else statusText = '⬇';
+
                         return (
-                            <button
-                                key={m}
-                                id={`vtt-model-${m}`}
-                                className={`vtt-model-btn${isActive ? ' vtt-model-btn--active' : ''}${!isDone ? ' vtt-model-btn--unavailable' : ''}`}
-                                onClick={() => isDone ? onModelChange(m) : !isDownloading && onModelDownload(m)}
-                                aria-pressed={isActive}
-                                title={isDone ? `Switch to ${MODEL_META[m].label}` : `Download ${MODEL_META[m].label} (${MODEL_META[m].size})`}
-                            >
-                                <span className="vtt-model-btn__name">{MODEL_META[m]?.short || m}</span>
-                                <span className="vtt-model-btn__status">
-                                    {isDone ? '✅' : isDownloading ? `${pct}%` : '⬇'}
-                                </span>
-                            </button>
+                            <option key={m} value={m}>
+                                {MODEL_META[m].label} ({MODEL_META[m].size}) {statusText}
+                            </option>
                         );
                     })}
-                </div>
+                </select>
             </div>
             <div className="vtt-settings__row">
                 <span className="vtt-settings__label">Language</span>
                 <select
                     id="vtt-language-select"
-                    className="vtt-lang-select"
+                    className="vtt-select-field"
                     value={config.language}
                     onChange={(e) => onLanguageChange(e.target.value)}
                     aria-label="Transcription language"
+                    style={{ flex: 1, textAlign: 'right' }}
                 >
                     {LANGUAGES.map((l) => (
                         <option key={l.value} value={l.value}>{l.label}</option>
@@ -652,11 +633,6 @@ function App() {
                     onLanguageChange={handleLanguageChange}
                     onHotkeyChange={handleHotkeyChange}
                 />
-
-                {/* HUD pill — overlays bottom of card while recording */}
-                {appState === APP_STATES.RECORDING && (
-                    <RecordingHUD elapsedSecs={elapsedSecs} />
-                )}
 
                 {/* Transcription overlay — overlays bottom of card after stop */}
                 {appState === APP_STATES.PROCESSING && transcriptionText && (

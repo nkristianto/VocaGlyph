@@ -85,6 +85,7 @@ func (r *realAudioBackend) Start() error {
 	// Reader goroutine: blocks on stream.Read(), copies buffer, sends to framesCh.
 	// Runs on a proper Go goroutine — safe to use Go runtime functions.
 	go func() {
+		defer close(r.framesCh) // clean up without racing against Stop()
 		for {
 			select {
 			case <-r.stopCh:
@@ -116,7 +117,7 @@ func (r *realAudioBackend) Start() error {
 func (r *realAudioBackend) Stop() error {
 	close(r.stopCh) // signal reader goroutine to exit
 	err := r.stream.Stop()
-	close(r.framesCh) // signal Frames() consumers
+	// The reader goroutine will close r.framesCh when it exits.
 	if err != nil {
 		return fmt.Errorf("portaudio stop stream: %w", err)
 	}

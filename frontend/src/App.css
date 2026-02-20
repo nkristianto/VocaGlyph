@@ -176,8 +176,26 @@ body,
 
 /* Processing state */
 .vtt-state-processing .vtt-mic-icon {
-  opacity: 0.6;
-  filter: none;
+  opacity: 0.8;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.4));
+  animation: vtt-processing-spin 2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+@keyframes vtt-processing-spin {
+  0% {
+    transform: scale(0.9) rotate(0deg);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.9) rotate(360deg);
+    opacity: 0.5;
+  }
 }
 
 @keyframes vtt-pulse {
@@ -530,85 +548,7 @@ body,
   min-width: 30px;
 }
 
-/* ── Floating Listening Pill ────────────────────────────── */
-/* Fixed-position indicator visible anywhere on screen      */
-/* while recording is active (hotkey pressed).              */
 
-@keyframes vtt-pill-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(12px) scale(0.92);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
-  }
-}
-
-@keyframes vtt-pill-dot-pulse {
-
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 0.5;
-    transform: scale(0.75);
-  }
-}
-
-.vtt-listening-pill {
-  position: fixed;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999;
-
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-
-  background: rgba(18, 18, 22, 0.88);
-  backdrop-filter: blur(16px) saturate(1.6);
-  -webkit-backdrop-filter: blur(16px) saturate(1.6);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 100px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
-
-  animation: vtt-pill-in 240ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  pointer-events: none;
-  /* never blocks clicks on other apps */
-}
-
-.vtt-listening-pill__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ff3b5c;
-  flex-shrink: 0;
-  animation: vtt-pill-dot-pulse 1.2s ease-in-out infinite;
-}
-
-.vtt-listening-pill__text {
-  font-family: var(--vtt-font-sans);
-  font-size: 13px;
-  font-weight: 600;
-  color: #ffffff;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.vtt-listening-pill__timer {
-  font-family: var(--vtt-font-mono);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
 
 /* ── Transcription Overlay (Story 3.3) ──────────────────── */
 /* Floating result panel — appears after recording stops.   */
@@ -806,62 +746,7 @@ body,
   min-width: 56px;
 }
 
-/* Model tab buttons */
-.vtt-model-picker {
-  display: flex;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: var(--vtt-radius-sm);
-  padding: 3px;
-}
-
-.vtt-model-btn {
-  flex: 1;
-  font-family: var(--vtt-font-mono);
-  font-size: var(--vtt-text-xs);
-  color: var(--vtt-text-muted);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  padding: 3px 6px;
-  cursor: pointer;
-  transition: background 150ms, color 150ms;
-}
-
-.vtt-model-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--vtt-text);
-}
-
-.vtt-model-btn--active {
-  background: rgba(139, 92, 246, 0.25);
-  color: var(--vtt-accent-violet, #a78bfa);
-  font-weight: 600;
-}
-
-/* Model button layout: name + status icon */
-.vtt-model-btn__name {
-  display: block;
-}
-
-.vtt-model-btn__status {
-  display: block;
-  font-size: 9px;
-  opacity: 0.7;
-  margin-top: 1px;
-}
-
-/* Not-downloaded model buttons appear dimmed */
-.vtt-model-btn--unavailable {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.vtt-model-btn--unavailable:hover {
-  opacity: 0.75;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--vtt-text-muted);
-}
+/* Model dropdown (reusing select-field) */
 
 /* ── ModelMissingBanner ──────────────────────────────────────
    Shown when no model is installed (first launch or missing file). */
@@ -931,8 +816,8 @@ body,
 }
 
 
-/* Language dropdown */
-.vtt-lang-select {
+/* Generic Select Field */
+.vtt-select-field {
   font-family: var(--vtt-font);
   font-size: var(--vtt-text-xs);
   color: var(--vtt-text);
@@ -949,8 +834,8 @@ body,
   transition: border-color 150ms;
 }
 
-.vtt-lang-select:hover,
-.vtt-lang-select:focus {
+.vtt-select-field:hover,
+.vtt-select-field:focus {
   border-color: rgba(255, 255, 255, 0.25);
   outline: none;
 }

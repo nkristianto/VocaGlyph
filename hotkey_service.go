@@ -90,25 +90,42 @@ func (r *realHotkeyBackend) Keydown() <-chan struct{} {
 
 // HotkeyService manages global hotkey registration for voice-to-text.
 type HotkeyService struct {
-	mu           sync.Mutex
-	backend      hotkeyBackend
-	combo        string // current hotkey combo string e.g. "ctrl+space"
-	registered   atomic.Bool
-	shuttingDown atomic.Bool        // set during app quit; defers skip CGo Unregister
-	doneCh       chan struct{}      // closed when the active listen goroutine exits
-	parentCtx    context.Context    // root context from Start() — used by Reregister
-	cancel       context.CancelFunc // cancels the listen goroutine
-	onTrigger    func()
+	mu             sync.Mutex
+	backend        hotkeyBackend
+	combo          string // current hotkey combo string e.g. "ctrl+space"
+	registered     atomic.Bool
+	shuttingDown   atomic.Bool        // set during app quit; defers skip CGo Unregister
+	doneCh         chan struct{}      // closed when the active listen goroutine exits
+	parentCtx      context.Context    // root context from Start() — used by Reregister
+	cancel         context.CancelFunc // cancels the listen goroutine
+	onTrigger      func()
+	backendFactory func(string) (hotkeyBackend, error) // factory for new backends
 }
 
 // NewHotkeyService creates a HotkeyService backed by the real macOS hotkey API.
 func NewHotkeyService() *HotkeyService {
-	return &HotkeyService{backend: newRealBackend(), combo: "ctrl+space"}
+	return &HotkeyService{
+		backend: newRealBackend(),
+		combo:   "ctrl+space",
+		backendFactory: func(c string) (hotkeyBackend, error) {
+			return newRealBackendFromCombo(c)
+		},
+	}
 }
 
 // newHotkeyServiceWithBackend creates a HotkeyService with a custom backend (for tests).
 func newHotkeyServiceWithBackend(b hotkeyBackend) *HotkeyService {
-	return &HotkeyService{backend: b, combo: "ctrl+space"}
+	return &HotkeyService{
+		backend: b,
+		combo:   "ctrl+space",
+		backendFactory: func(c string) (hotkeyBackend, error) {
+			_, _, err := parseHotkey(c)
+			if err != nil {
+				return nil, err
+			}
+			return b, nil
+		},
+	}
 }
 
 // Start registers the hotkey and launches a listener goroutine that calls onTrigger
@@ -120,7 +137,7 @@ func (s *HotkeyService) Start(ctx context.Context, combo string, onTrigger func(
 
 	// If a combo was provided, swap backend to use it.
 	if combo != "" && combo != s.combo {
-		b, err := newRealBackendFromCombo(combo)
+		b, err := s.backendFactory(combo)
 		if err != nil {
 			return err
 		}
@@ -181,7 +198,7 @@ func (s *HotkeyService) Reregister(newCombo string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	newBackend, err := newRealBackendFromCombo(newCombo)
+	newBackend, err := s.backendFactory(newCombo)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -302,6 +304,28 @@ func (ms *ModelService) runDownload(ctx context.Context, entry modelEntry) {
 		return
 	}
 
-	log.Printf("model: %s downloaded successfully", entry.FileName)
+	// Optional: Generate CoreML model bundle if possible.
+	// Whisper's generate-coreml-model.sh uses Python and coremltools.
+	// We extract the base name (e.g. "base.en" from "ggml-base.en.bin").
+	modelType := strings.TrimSuffix(strings.TrimPrefix(entry.FileName, "ggml-"), ".bin")
+	log.Printf("model: %s downloaded successfully. Attempting to deploy CoreML bundle...", entry.FileName)
+
+	// Exec the shell script. We set the emit event so UI can show "optimizing".
+	emit("model:download:progress", map[string]interface{}{"name": name, "pct": 99})
+
+	cmdPath := "./scripts/generate-coreml.sh"
+	if _, err := os.Stat(cmdPath); err == nil {
+		// Only run if the dev script is available in CWD.
+		importCmd := exec.Command(cmdPath, modelType)
+		if output, err := importCmd.CombinedOutput(); err != nil {
+			log.Printf("model: coreml generation failed for %s (non-fatal): %v\nOutput: %s", modelType, err, string(output))
+		} else {
+			log.Printf("model: coreml generation succeeded for %s", modelType)
+		}
+	} else {
+		log.Printf("model: coreml generation script not found, skipping optimization")
+	}
+
+	log.Printf("model: %s download and preparation complete", entry.FileName)
 	emit("model:download:done", map[string]string{"name": name})
 }

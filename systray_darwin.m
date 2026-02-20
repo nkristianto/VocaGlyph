@@ -30,6 +30,7 @@ extern void goQuitCallback(void);
 
 static NSStatusItem *_statusItem = nil;
 static _SysTrayTarget *_sysTrayTarget = nil;
+static NSImage *_idleImage = nil;
 
 static void initSysTrayOnMain(NSData *imgData) {
   if (_statusItem != nil)
@@ -86,5 +87,38 @@ void dispatchHideFromDock(void) {
   dispatch_async(dispatch_get_main_queue(), ^{
     [[NSApplication sharedApplication]
         setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  });
+}
+
+void dispatchSetSysTrayState(int state) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!_statusItem)
+      return;
+
+    if (!_idleImage) {
+      _idleImage = [[[_statusItem button] image] retain];
+    }
+
+    if (state == 0) {
+      [[_statusItem button] setImage:_idleImage];
+    } else if (state == 1) {
+      // 1 = Recording : Red waveform
+      NSImage *img = [NSImage imageWithSystemSymbolName:@"waveform.circle.fill"
+                               accessibilityDescription:nil];
+      if (img) {
+        NSImageSymbolConfiguration *cfg = [NSImageSymbolConfiguration
+            configurationWithPaletteColors:@[ [NSColor systemRedColor] ]];
+        [[_statusItem button] setImage:[img imageWithSymbolConfiguration:cfg]];
+      }
+    } else if (state == 2) {
+      // 2 = Processing : Orange hourglass/sync
+      NSImage *img = [NSImage imageWithSystemSymbolName:@"hourglass.circle.fill"
+                               accessibilityDescription:nil];
+      if (img) {
+        NSImageSymbolConfiguration *cfg = [NSImageSymbolConfiguration
+            configurationWithPaletteColors:@[ [NSColor systemOrangeColor] ]];
+        [[_statusItem button] setImage:[img imageWithSymbolConfiguration:cfg]];
+      }
+    }
   });
 }

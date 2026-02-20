@@ -7,6 +7,7 @@ package main
 // to avoid CGo preamble duplicate-symbol linker errors.
 extern void dispatchSysTray(const unsigned char *pngData, int pngLen);
 extern void dispatchHideFromDock(void);
+extern void dispatchSetSysTrayState(int state);
 */
 import "C"
 
@@ -55,3 +56,9 @@ func StartSystray(app *App) {
 
 // HideFromDock is now handled inside StartSystray. No-op kept for compatibility.
 func HideFromDock() {}
+
+// SetSysTrayState updates the menu bar icon based on the current app state.
+// 0 = Idle, 1 = Recording, 2 = Processing.
+func SetSysTrayState(state int) {
+	C.dispatchSetSysTrayState(C.int(state))
+}

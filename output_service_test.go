@@ -98,21 +98,3 @@ func TestOutputServiceEmptyText(t *testing.T) {
 		t.Error("neither Paste nor CopyToClipboard should be called for empty text")
 	}
 }
-
-func TestEscapeForAppleScript(t *testing.T) {
-	cases := []struct {
-		input string
-		want  string
-	}{
-		{`Hello "world"`, `Hello \"world\"`},
-		{`back\slash`, `back\\slash`},
-		{`both "quotes" and \backslash`, `both \"quotes\" and \\backslash`},
-		{`plain text`, `plain text`},
-	}
-	for _, tc := range cases {
-		got := escapeForAppleScript(tc.input)
-		if got != tc.want {
-			t.Errorf("escapeForAppleScript(%q) = %q; want %q", tc.input, got, tc.want)
-		}
-	}
-}

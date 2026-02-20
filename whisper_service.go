@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	// NOTE: This import requires the go.mod replace directive pointing to ../whisper.cpp/bindings/go
@@ -19,7 +21,7 @@ var ErrModelNotFound = errors.New("whisper model not found — download with: sh
 // Keeps CGo and model loading out of unit tests.
 type whisperBackend interface {
 	Load(modelPath string) error
-	Transcribe(pcm []float32) (string, error)
+	Transcribe(pcm []float32, prompt string) (string, error)
 	Close() error
 }
 
@@ -62,10 +64,6 @@ func (r *realWhisperBackend) Load(modelPath string) error {
 	// but may miss words in longer/complex sentences. beam_size=2 gives ~2x
 	// speedup vs default with negligible quality loss for short dictation clips.
 	ctx.SetBeamSize(2)
-	// SetAudioCtx: reduce encoder context from 1500→768 frames (~15s→~7.5s).
-	// Any recording longer than ~7.5s uses the full window anyway; for typical
-	// 1–5s dictation bursts this halves the encoder compute.
-	ctx.SetAudioCtx(768)
 	// SetMaxContext(0): each recording is independent — don't feed previous
 	// segment tokens as context into the next decode pass.
 	ctx.SetMaxContext(0)
@@ -74,9 +72,15 @@ func (r *realWhisperBackend) Load(modelPath string) error {
 	return nil
 }
 
-func (r *realWhisperBackend) Transcribe(pcm []float32) (string, error) {
+func (r *realWhisperBackend) Transcribe(pcm []float32, prompt string) (string, error) {
 	if r.context == nil {
 		return "", fmt.Errorf("whisper: not loaded")
+	}
+
+	if prompt != "" {
+		r.context.SetInitialPrompt(prompt)
+	} else {
+		r.context.SetInitialPrompt("") // Clear previous
 	}
 
 	if err := r.context.Process(pcm, nil, nil, nil); err != nil {
@@ -101,8 +105,14 @@ func (r *realWhisperBackend) Close() error {
 	return nil
 }
 
+// TranscriptionJob holds the audio payload and any user-context text.
+type TranscriptionJob struct {
+	PCM    []float32
+	Prompt string
+}
+
 // WhisperService manages model loading and transcription.
-// It consumes PCM buffers from whisperCh and calls onResult with the text.
+// It consumes TranscriptionJobs from whisperCh and calls onResult with the text.
 type WhisperService struct {
 	backend   whisperBackend
 	modelPath string
@@ -133,25 +143,28 @@ func (s *WhisperService) Load() error {
 	return nil
 }
 
-// Start begins consuming PCM buffers from whisperCh in a goroutine.
+// Start begins consuming jobs from whisperCh in a goroutine.
 // Each buffer is transcribed and the result passed to onResult.
 // Returns immediately — the goroutine exits when whisperCh is closed.
-func (s *WhisperService) Start(whisperCh <-chan []float32, onResult func(string)) {
+func (s *WhisperService) Start(whisperCh <-chan TranscriptionJob, onResult func(string)) {
 	go func() {
-		for pcm := range whisperCh {
+		for job := range whisperCh {
+			pcm := job.PCM
 			if !s.loaded {
 				log.Printf("whisper: model not loaded — skipping %d samples", len(pcm))
 				continue
 			}
-			log.Printf("whisper: transcribing %d samples (%.2fs)…", len(pcm), float64(len(pcm))/16000)
+			log.Printf("whisper: transcribing %d samples (%.2fs)… [prompt=%d chars]",
+				len(pcm), float64(len(pcm))/16000, len(job.Prompt))
 			t0 := time.Now()
-			text, err := s.backend.Transcribe(pcm)
+			text, err := s.backend.Transcribe(pcm, job.Prompt)
 			latency := time.Since(t0)
 			if err != nil {
 				log.Printf("whisper: transcription error: %v", err)
 				continue
 			}
 			text = trim(text)
+			text = scrubFillers(text) // Regex fallback to strip lingering filler words
 			if text == "" {
 				log.Printf("whisper: empty transcription — skipping")
 				continue
@@ -201,6 +214,17 @@ func trim(s string) string {
 		s = s[:len(s)-1]
 	}
 	return s
+}
+
+// scrubFillers uses a regex fallback to strip common isolated filler words
+// that the neural network prompt might have missed. It specifically targets
+// "um", "uh", "ah", "hmm" appearing with optional trailing commas/periods.
+func scrubFillers(s string) string {
+	// \b ensures we don't accidentally match parts of words (e.g., "yummy").
+	// (?i) makes it case-insensitive.
+	// We replace "[filler][punctuation]" with an empty string, then trim.
+	re := regexp.MustCompile(`(?i)\b(um|uh|ah|hmm|mhm|uhh|umm)\b[,\.]?\s*`)
+	return strings.TrimSpace(re.ReplaceAllString(s, ""))
 }
 
 // isHallucination reports whether the text is a known whisper.cpp hallucination tag

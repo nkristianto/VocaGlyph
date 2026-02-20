@@ -20,7 +20,7 @@ func (m *mockWhisperBackend) Load(_ string) error {
 	return m.loadErr
 }
 
-func (m *mockWhisperBackend) Transcribe(_ []float32) (string, error) {
+func (m *mockWhisperBackend) Transcribe(_ []float32, _ string) (string, error) {
 	m.transcribeCalled = true
 	return m.transcribeResult, m.transcribeErr
 }
@@ -69,14 +69,14 @@ func TestWhisperServiceTranscribe(t *testing.T) {
 	}
 
 	resultCh := make(chan string, 1)
-	whisperCh := make(chan []float32, 1)
+	whisperCh := make(chan TranscriptionJob, 1)
 
 	svc.Start(whisperCh, func(text string) {
 		resultCh <- text
 	})
 
-	// Send a fake PCM buffer
-	whisperCh <- make([]float32, 1600)
+	// Send a fake job
+	whisperCh <- TranscriptionJob{PCM: make([]float32, 1600), Prompt: "context"}
 	close(whisperCh)
 
 	select {

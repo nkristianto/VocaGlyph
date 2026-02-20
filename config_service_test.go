@@ -29,9 +29,10 @@ func TestConfigServiceSaveLoad(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	got := svc.Load()
-	if got != want {
-		t.Errorf("Load() = %+v; want %+v", got, want)
+	cfg := svc.Load()
+	expected := Config{Model: "small", Language: "auto", Hotkey: "ctrl+space"}
+	if cfg != expected {
+		t.Errorf("Load() = %+v; want %+v", cfg, expected)
 	}
 }
 

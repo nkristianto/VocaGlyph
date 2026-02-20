@@ -32,7 +32,7 @@ type audioStarter interface {
 // whisperRunner is the minimal interface the App needs from WhisperService.
 type whisperRunner interface {
 	Load() error
-	Start(whisperCh <-chan []float32, onResult func(string))
+	Start(whisperCh <-chan TranscriptionJob, onResult func(string))
 	IsLoaded() bool
 	Reload(modelPath string) error
 	Close() error // must be called before process exit to free Metal GPU resources
@@ -57,12 +57,13 @@ type App struct {
 	audio         audioStarter // nil in unit tests; injected by main.go
 	audioCtx      context.Context
 	audioCancelFn context.CancelFunc
-	whisperCh     chan []float32
+	whisperCh     chan TranscriptionJob
 	whisper       whisperRunner  // nil in unit tests; injected by main.go
 	output        outputRunner   // nil in unit tests; injected by main.go
 	config        *ConfigService // nil in unit tests; injected by main.go
 	modelService  *ModelService  // nil in unit tests; injected by main.go
 	windowVisible bool
+	activeContext string // captured text context when recording starts
 }
 
 // NewApp creates a new App application struct.
@@ -76,7 +77,7 @@ func NewApp() *App {
 	return &App{
 		startupCh:  make(chan struct{}),
 		loginItems: svc,
-		whisperCh:  make(chan []float32, 4), // buffered; Story 3 consumes
+		whisperCh:  make(chan TranscriptionJob, 4), // buffered; Story 3 consumes
 	}
 }
 
@@ -159,6 +160,7 @@ func (a *App) startup(ctx context.Context) {
 			a.mu.RLock()
 			c := a.ctx
 			a.mu.RUnlock()
+			SetSysTrayState(0) // Return to Idle
 			// Emit result to UI first so the overlay appears immediately.
 			runtime.EventsEmit(c, "transcription:result", text)
 			// Then attempt to paste; fall back to clipboard if needed.
@@ -192,18 +194,31 @@ func (a *App) onHotkeyTriggered() {
 	}
 
 	if a.audio.IsRecording() {
+		// Capture the saved context from when recording started.
+		// We append a strong instruction to the end of the context to suppress
+		// common filler words (um, uh, ah) from the transcription.
+		promptCtx := a.activeContext
+		suppressInstruction := " Here is a clean, grammatically correct transcript without filler words or stutters:"
+		if promptCtx != "" {
+			promptCtx = promptCtx + suppressInstruction
+		} else {
+			promptCtx = suppressInstruction
+		}
+
 		// Stop recording → seal buffer → queue for transcription
 		go func() {
 			pcm, err := a.audio.StopRecording()
 			if err != nil {
 				log.Printf("audio: stop error: %v", err)
+				SetSysTrayState(0) // error = back to idle
 				runtime.EventsEmit(ctx, "audio:error")
 				return
 			}
+			SetSysTrayState(2) // Processing state
 			if len(pcm) > 0 {
 				select {
-				case a.whisperCh <- pcm:
-					log.Printf("audio: %d samples queued for transcription", len(pcm))
+				case a.whisperCh <- TranscriptionJob{PCM: pcm, Prompt: promptCtx}:
+					log.Printf("audio: %d samples queued for transcription (context captured: %d chars)", len(pcm), len(promptCtx))
 				default:
 					log.Printf("audio: whisperCh full — dropping recording")
 				}
@@ -212,6 +227,12 @@ func (a *App) onHotkeyTriggered() {
 		}()
 	} else {
 		// Start recording
+
+		// Capture UI text context right BEFORE recording starts, when the target
+		// app is guaranteed to be in focus and the cursor is exactly where the
+		// user is about to dictate.
+		a.activeContext = captureContextText()
+
 		recordCtx, cancel := context.WithCancel(ctx)
 		a.audioCancelFn = cancel
 		if err := a.audio.StartRecording(recordCtx); err != nil {
@@ -225,6 +246,7 @@ func (a *App) onHotkeyTriggered() {
 			}
 			return
 		}
+		SetSysTrayState(1)                          // Recording state
 		runtime.EventsEmit(ctx, "hotkey:triggered") // → recording state in React
 	}
 }
