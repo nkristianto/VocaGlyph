@@ -3,6 +3,7 @@ package main
 /*
 #cgo LDFLAGS: -framework ApplicationServices -framework Foundation
 #include <stdlib.h>
+#include <stdbool.h>
 #include "keystroke_darwin.h"
 */
 import "C"
@@ -20,6 +21,12 @@ import (
 type outputter interface {
 	Paste(text string) error
 	CopyToClipboard(text string) error
+}
+
+// PromptAccessibility proactively asks macOS to show the accessibility dialog
+// if permissions aren't already granted. This should be called once on app startup.
+func PromptAccessibility() {
+	_ = bool(C.is_accessibility_trusted(C.bool(true)))
 }
 
 // OutputService tries to paste via osascript; falls back to clipboard.
@@ -67,8 +74,9 @@ type realOutputter struct{}
 // Paste uses native CGEventPost to keystroke text into the OS queue with zero latency.
 func (r *realOutputter) Paste(text string) error {
 	// 1. Check if we have accessibility permissions required for CGEventPost.
-	// We pass true to prompt the user if they haven't granted it yet.
-	if !C.is_accessibility_trusted(C.bool(true)) {
+	// We pass false to check silently without triggering the OS prompt every single paste.
+	// The prompt is triggered once proactively on app startup.
+	if !bool(C.is_accessibility_trusted(C.bool(false))) {
 		return fmt.Errorf("accessibility permission denied — falling back to clipboard")
 	}
 

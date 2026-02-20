@@ -11,7 +11,7 @@ export CGO_LDFLAGS     := \
 	-framework Metal -framework MetalKit -framework MetalPerformanceShaders \
 	-framework CoreGraphics -framework Security -framework CoreML
 
-.PHONY: whisper-build whisper-model build test dev
+.PHONY: whisper-build whisper-model build test dev package package-dmg
 
 ## Build whisper.cpp static libraries with Metal acceleration (one-time setup)
 whisper-build:
@@ -43,3 +43,23 @@ test:
 ## Run wails dev with all required env vars set
 dev:
 	wails dev
+
+## Build a macOS installation package (.app and .zip)
+package:
+	wails build -platform darwin/arm64 -clean
+	cd build/bin && zip -r voice-to-text-mac.zip "voice-to-text.app"
+
+## Build a macOS DMG installer (requires `brew install create-dmg`)
+package-dmg: package
+	rm -f build/bin/voice-to-text.dmg
+	create-dmg \
+		--volname "Voice To Text Installer" \
+		--volicon "build/bin/voice-to-text.app/Contents/Resources/iconfile.icns" \
+		--window-pos 200 120 \
+		--window-size 600 400 \
+		--icon-size 100 \
+		--icon "voice-to-text.app" 150 190 \
+		--hide-extension "voice-to-text.app" \
+		--app-drop-link 450 190 \
+		"build/bin/voice-to-text.dmg" \
+		"build/bin/voice-to-text.app"

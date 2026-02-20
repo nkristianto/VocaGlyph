@@ -122,6 +122,10 @@ func (a *App) startup(ctx context.Context) {
 	// HideFromDock() is called inside onSystrayReady on the Cocoa thread.
 	go StartSystray(a)
 
+	// Proactively trigger the macOS Accessibility permissions dialog
+	// if it hasn't been granted yet (prevents spamming the user on every hotkey press).
+	PromptAccessibility()
+
 	// Start global hotkey listener — only if a service has been injected.
 	if a.hotkeys != nil {
 		hkCtx, cancel := context.WithCancel(ctx)

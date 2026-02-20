@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"embed"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/logger"
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,7 +20,39 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// initLogging prepares a log file in ~/.voice-to-text/app.log
+// It configures the standard 'log' package to write to both stdout and this file.
+func initLogging() *os.File {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("logging: failed to get home dir: %v", err)
+		return nil
+	}
+	logDir := filepath.Join(home, ".voice-to-text")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		log.Printf("logging: failed to create log dir: %v", err)
+		return nil
+	}
+
+	logPath := filepath.Join(logDir, "app.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	if err != nil {
+		log.Printf("logging: failed to open log file: %v", err)
+		return nil
+	}
+
+	log.SetOutput(io.MultiWriter(os.Stdout, f))
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+	log.Println("=== Application Started ===")
+	return f
+}
+
 func main() {
+	logFile := initLogging()
+	if logFile != nil {
+		defer logFile.Close()
+	}
+
 	app := NewApp()
 	app.SetHotkeyService(NewHotkeyService())
 	app.SetAudioService(NewAudioService())
@@ -75,6 +111,8 @@ func main() {
 			app.SaveWindowPosition()
 			return false
 		},
+		Logger:   logger.NewDefaultLogger(),
+		LogLevel: logger.WARNING,
 	})
 
 	if err != nil {
