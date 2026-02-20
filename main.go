@@ -31,6 +31,9 @@ func main() {
 	app.SetWhisperService(NewWhisperService(modelPath))
 	app.SetOutputService(NewOutputService())
 
+	// Model download/status service.
+	app.SetModelService(NewModelService())
+
 	// Application menu — keyboard shortcuts while window is focused.
 	appMenu := menu.NewMenu()
 	fileMenu := appMenu.AddSubmenu("voice-to-text")

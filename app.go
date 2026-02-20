@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -52,14 +53,15 @@ type App struct {
 	loginItems    *LoginItemService
 	hotkeys       hotkeyStarter // nil in unit tests; injected by main.go
 	hotkeyCtx     context.CancelFunc
-	audio         audioStarter    // nil in unit tests; injected by main.go
-	audioCtx      context.Context // cancelled when recording stops
+	audio         audioStarter // nil in unit tests; injected by main.go
+	audioCtx      context.Context
 	audioCancelFn context.CancelFunc
-	whisperCh     chan []float32 // sealed PCM handed to Story 3 transcription
+	whisperCh     chan []float32
 	whisper       whisperRunner  // nil in unit tests; injected by main.go
 	output        outputRunner   // nil in unit tests; injected by main.go
 	config        *ConfigService // nil in unit tests; injected by main.go
-	windowVisible bool           // tracks whether the popover window is currently shown
+	modelService  *ModelService  // nil in unit tests; injected by main.go
+	windowVisible bool
 }
 
 // NewApp creates a new App application struct.
@@ -92,6 +94,9 @@ func (a *App) SetOutputService(os outputRunner) { a.output = os }
 // SetConfigService injects the config persistence service (called by main.go before wails.Run).
 func (a *App) SetConfigService(cs *ConfigService) { a.config = cs }
 
+// SetModelService injects the model download/status service (called by main.go before wails.Run).
+func (a *App) SetModelService(ms *ModelService) { a.modelService = ms }
+
 // startup is called by Wails when the runtime is ready.
 func (a *App) startup(ctx context.Context) {
 	a.mu.Lock()
@@ -104,6 +109,11 @@ func (a *App) startup(ctx context.Context) {
 		if cfg := a.config.Load(); cfg.WindowX != 0 || cfg.WindowY != 0 {
 			runtime.WindowSetPosition(ctx, cfg.WindowX, cfg.WindowY)
 		}
+	}
+
+	// Give the model service the runtime context for event emission.
+	if a.modelService != nil {
+		a.modelService.SetContext(ctx)
 	}
 
 	// Launch systray icon (mic) in menu bar after Wails/Cocoa is running.
@@ -304,14 +314,43 @@ func (a *App) SetModel(model string) error {
 	if a.config == nil || a.whisper == nil {
 		return nil
 	}
-	home, _ := os.UserHomeDir()
-	modelPath := home + "/.voice-to-text/models/ggml-" + model + ".en.bin"
+	var modelPath string
+	if a.modelService != nil {
+		modelPath = a.modelService.ModelPath(model)
+	} else {
+		home, _ := os.UserHomeDir()
+		modelPath = home + "/.voice-to-text/models/ggml-" + model + ".en.bin"
+	}
+	// Check that the file exists before attempting to reload — return a
+	// user-friendly error so the frontend can show a download prompt.
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		return fmt.Errorf("model %q is not downloaded — click the download button first", model)
+	}
 	if err := a.whisper.Reload(modelPath); err != nil {
 		return err
 	}
 	cfg := a.config.Load()
 	cfg.Model = model
 	return a.config.Save(cfg)
+}
+
+// GetModelStatuses returns the download status of each known model.
+// Values: "downloaded", "not_downloaded", or "downloading:N" (N = 0-100).
+func (a *App) GetModelStatuses() map[string]string {
+	if a.modelService == nil {
+		return map[string]string{}
+	}
+	return a.modelService.GetModelStatuses()
+}
+
+// DownloadModel starts a background download of the named model.
+// Progress is streamed via "model:download:progress", "model:download:done",
+// and "model:download:error" Wails events.
+func (a *App) DownloadModel(name string) error {
+	if a.modelService == nil {
+		return fmt.Errorf("model service not available")
+	}
+	return a.modelService.DownloadModel(name)
 }
 
 // SetLanguage updates the transcription language and persists the change.

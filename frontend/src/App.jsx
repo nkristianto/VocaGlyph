@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
-import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey } from '../wailsjs/go/main/App';
+import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey, GetModelStatuses, DownloadModel } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetPosition, WindowGetPosition } from '../wailsjs/runtime/runtime';
 
 // App state drives .vtt-state-* class on root — controls all visual states
@@ -70,6 +70,11 @@ function ClipboardToast() {
 // ── SettingsPanel ─────────────────────────────────────────
 // Model picker + language selector, collapsed below the divider.
 const MODELS = ['tiny', 'base', 'small'];
+const MODEL_META = {
+    tiny: { label: 'Tiny', size: '75 MB' },
+    base: { label: 'Base', size: '142 MB' },
+    small: { label: 'Small', size: '466 MB' },
+};
 const LANGUAGES = [
     { value: 'en', label: 'English' },
     { value: 'auto', label: 'Auto-detect' },
@@ -79,7 +84,42 @@ const LANGUAGES = [
     { value: 'ja', label: 'Japanese' },
 ];
 
-function SettingsPanel({ config, onModelChange, onLanguageChange, onHotkeyChange }) {
+// ── ModelMissingBanner ────────────────────────────────────
+// Shown on first launch when no model is installed.
+function ModelMissingBanner({ modelStatuses, onDownload }) {
+    return (
+        <div id="vtt-model-missing" className="vtt-model-missing" role="alert">
+            <div className="vtt-model-missing__header">
+                <span className="vtt-model-missing__icon">⚠</span>
+                <strong>No model installed</strong>
+            </div>
+            <p className="vtt-model-missing__body">Download a model to start dictating.</p>
+            <div className="vtt-model-missing__buttons">
+                {MODELS.map((m) => {
+                    const st = modelStatuses[m] || 'not_downloaded';
+                    const isDownloading = st.startsWith('downloading');
+                    const pct = isDownloading ? parseInt(st.split(':')[1] || '0', 10) : 0;
+                    const done = st === 'downloaded';
+                    return (
+                        <button
+                            key={m}
+                            id={`vtt-missing-dl-${m}`}
+                            className={`vtt-model-missing__btn${done ? ' vtt-model-missing__btn--done' : ''}`}
+                            onClick={() => !done && !isDownloading && onDownload(m)}
+                            disabled={done || isDownloading}
+                        >
+                            {done ? `✅ ${MODEL_META[m].label}` :
+                                isDownloading ? `⬇ ${pct}%` :
+                                    `⬇ ${MODEL_META[m].label} · ${MODEL_META[m].size}`}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function SettingsPanel({ config, modelStatuses, onModelChange, onModelDownload, onLanguageChange, onHotkeyChange }) {
     return (
         <div className="vtt-settings">
             <div className="vtt-settings__row">
@@ -89,17 +129,28 @@ function SettingsPanel({ config, onModelChange, onLanguageChange, onHotkeyChange
             <div className="vtt-settings__row">
                 <span className="vtt-settings__label">Model</span>
                 <div className="vtt-model-picker" role="group" aria-label="Model size">
-                    {MODELS.map((m) => (
-                        <button
-                            key={m}
-                            id={`vtt-model-${m}`}
-                            className={`vtt-model-btn${config.model === m ? ' vtt-model-btn--active' : ''}`}
-                            onClick={() => onModelChange(m)}
-                            aria-pressed={config.model === m}
-                        >
-                            {m}
-                        </button>
-                    ))}
+                    {MODELS.map((m) => {
+                        const st = modelStatuses[m] || 'not_downloaded';
+                        const isActive = config.model === m;
+                        const isDownloading = st.startsWith('downloading');
+                        const pct = isDownloading ? parseInt(st.split(':')[1] || '0', 10) : 0;
+                        const isDone = st === 'downloaded';
+                        return (
+                            <button
+                                key={m}
+                                id={`vtt-model-${m}`}
+                                className={`vtt-model-btn${isActive ? ' vtt-model-btn--active' : ''}${!isDone ? ' vtt-model-btn--unavailable' : ''}`}
+                                onClick={() => isDone ? onModelChange(m) : !isDownloading && onModelDownload(m)}
+                                aria-pressed={isActive}
+                                title={isDone ? `Switch to ${MODEL_META[m].label}` : `Download ${MODEL_META[m].label} (${MODEL_META[m].size})`}
+                            >
+                                <span className="vtt-model-btn__name">{m}</span>
+                                <span className="vtt-model-btn__status">
+                                    {isDone ? '✅' : isDownloading ? `${pct}%` : '⬇'}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
             <div className="vtt-settings__row">
@@ -281,18 +332,30 @@ function App() {
     const [transcriptionText, setTranscriptionText] = useState('');
     const [showClipboardToast, setShowClipboardToast] = useState(false);
     const [config, setConfig] = useState({ model: 'base', language: 'en', hotkey: 'ctrl+space' });
+    const [modelStatuses, setModelStatuses] = useState({ tiny: 'not_downloaded', base: 'not_downloaded', small: 'not_downloaded' });
+    const [showModelMissing, setShowModelMissing] = useState(false);
 
     // Load initial values from Go backend
     useEffect(() => {
         GetStatus().then(setStatusText).catch(() => setStatusText('Ready to dictate'));
         GetLaunchAtLogin().then(setLaunchAtLogin).catch(() => setLaunchAtLogin(false));
         GetConfig().then(setConfig).catch(() => setConfig({ model: 'base', language: 'en' }));
+        GetModelStatuses().then(setModelStatuses).catch(console.error);
     }, []);
 
     function handleModelChange(model) {
         SetModel(model)
             .then(() => setConfig((c) => ({ ...c, model })))
             .catch((err) => console.error('SetModel failed:', err));
+    }
+
+    function handleModelDownload(name) {
+        // Show downloading:0 immediately so the button state updates
+        setModelStatuses((prev) => ({ ...prev, [name]: 'downloading:0' }));
+        DownloadModel(name).catch((err) => {
+            console.error('DownloadModel failed:', err);
+            setModelStatuses((prev) => ({ ...prev, [name]: 'not_downloaded' }));
+        });
     }
 
     function handleLanguageChange(language) {
@@ -313,8 +376,40 @@ function App() {
 
     // Listen for hotkey + audio events from Go backend
     useEffect(() => {
+        // model:missing — fired on startup when no model is installed
+        const unsubModelMissing = EventsOn('model:missing', () => {
+            setShowModelMissing(true);
+        });
+
+        // model:download:progress — update downloading:N status
+        const unsubDlProgress = EventsOn('model:download:progress', (data) => {
+            if (!data || !data.name) return;
+            setModelStatuses((prev) => ({ ...prev, [data.name]: `downloading:${data.pct ?? 0}` }));
+        });
+
+        // model:download:done — mark as downloaded; auto-select if banner is showing
+        const unsubDlDone = EventsOn('model:download:done', (data) => {
+            if (!data || !data.name) return;
+            const { name } = data;
+            setModelStatuses((prev) => ({ ...prev, [name]: 'downloaded' }));
+            // Refresh full statuses from backend after a short delay to sync
+            setTimeout(() => GetModelStatuses().then(setModelStatuses).catch(console.error), 300);
+            // If the banner was showing, auto-select this model and hide banner
+            setShowModelMissing((was) => {
+                if (was) { handleModelChange(name); }
+                return false;
+            });
+        });
+
+        // model:download:error — revert to not_downloaded, log
+        const unsubDlError = EventsOn('model:download:error', (data) => {
+            if (!data || !data.name) return;
+            console.error(`Download error for ${data.name}:`, data.err);
+            setModelStatuses((prev) => ({ ...prev, [data.name]: 'not_downloaded' }));
+        });
+
         const unsubTrigger = EventsOn('hotkey:triggered', () => {
-            setMicDenied(false); // clear any previous permission error on successful start
+            setMicDenied(false);
             setAppState((prev) => {
                 if (prev === APP_STATES.IDLE) return APP_STATES.RECORDING;
                 if (prev === APP_STATES.RECORDING) return APP_STATES.PROCESSING;
@@ -342,6 +437,10 @@ function App() {
         });
 
         return () => {
+            unsubModelMissing();
+            unsubDlProgress();
+            unsubDlDone();
+            unsubDlError();
             unsubTrigger();
             unsubConflict();
             unsubMicDenied();
@@ -493,6 +592,14 @@ function App() {
                     </div>
                 )}
 
+                {/* First-run model missing banner */}
+                {showModelMissing && (
+                    <ModelMissingBanner
+                        modelStatuses={modelStatuses}
+                        onDownload={handleModelDownload}
+                    />
+                )}
+
                 {/* Settings section */}
                 <div className="vtt-divider" />
 
@@ -512,7 +619,9 @@ function App() {
 
                 <SettingsPanel
                     config={config}
+                    modelStatuses={modelStatuses}
                     onModelChange={handleModelChange}
+                    onModelDownload={handleModelDownload}
                     onLanguageChange={handleLanguageChange}
                     onHotkeyChange={handleHotkeyChange}
                 />

@@ -759,6 +759,98 @@ body,
   font-weight: 600;
 }
 
+/* Model button layout: name + status icon */
+.vtt-model-btn__name {
+  display: block;
+}
+
+.vtt-model-btn__status {
+  display: block;
+  font-size: 9px;
+  opacity: 0.7;
+  margin-top: 1px;
+}
+
+/* Not-downloaded model buttons appear dimmed */
+.vtt-model-btn--unavailable {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vtt-model-btn--unavailable:hover {
+  opacity: 0.75;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vtt-text-muted);
+}
+
+/* ── ModelMissingBanner ──────────────────────────────────────
+   Shown when no model is installed (first launch or missing file). */
+.vtt-model-missing {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: rgba(242, 13, 13, 0.08);
+  border: 1px solid rgba(242, 13, 13, 0.25);
+  border-radius: var(--vtt-radius);
+  animation: slideIn 200ms ease;
+}
+
+.vtt-model-missing__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: var(--vtt-text-sm);
+  color: var(--vtt-text);
+}
+
+.vtt-model-missing__icon {
+  font-size: 14px;
+}
+
+.vtt-model-missing__body {
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-muted);
+  margin: 0 0 8px 0;
+}
+
+.vtt-model-missing__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vtt-model-missing__btn {
+  width: 100%;
+  padding: 6px 10px;
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--vtt-radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms, border-color 150ms;
+}
+
+.vtt-model-missing__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.vtt-model-missing__btn--done {
+  color: var(--vtt-success, #4ade80);
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.06);
+  cursor: default;
+}
+
+.vtt-model-missing__btn:disabled:not(.vtt-model-missing__btn--done) {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+
 /* Language dropdown */
 .vtt-lang-select {
   font-family: var(--vtt-font);
