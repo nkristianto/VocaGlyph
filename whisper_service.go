@@ -51,7 +51,22 @@ func (r *realWhisperBackend) Load(modelPath string) error {
 	}
 
 	ctx.SetLanguage("en") //nolint:errcheck — "en" is always valid
-	ctx.SetThreads(4)     // keep below core count to leave room for UI
+
+	// ── Speed tuning ──────────────────────────────────────────────────────
+	// Goal: minimise transcription latency for short dictation bursts.
+	//
+	// SetThreads: M4 has 10 cores (4e+6p); 8 keeps UI/audio threads free.
+	ctx.SetThreads(8)
+	// SetBeamSize(1): greedy decoding instead of beam-search (beam_size=5).
+	// Drastic speedup with negligible accuracy loss for short en-only clips.
+	ctx.SetBeamSize(1)
+	// SetAudioCtx: reduce encoder context from 1500→768 frames (~15s→~7.5s).
+	// Any recording longer than ~7.5s uses the full window anyway; for typical
+	// 1–5s dictation bursts this halves the encoder compute.
+	ctx.SetAudioCtx(768)
+	// SetMaxContext(0): each recording is independent — don't feed previous
+	// segment tokens as context into the next decode pass.
+	ctx.SetMaxContext(0)
 
 	r.context = ctx
 	return nil
