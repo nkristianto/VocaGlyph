@@ -47,19 +47,20 @@ dev:
 ## Build a macOS installation package (.app and .zip)
 package:
 	wails build -platform darwin/arm64 -clean
-	cd build/bin && zip -r voice-to-text-mac.zip "voice-to-text.app"
+	cd build/bin && zip -r VocaGlyph-mac.zip "VocaGlyph.app"
 
 ## Build a macOS DMG installer (requires `brew install create-dmg`)
 package-dmg: package
-	rm -f build/bin/voice-to-text.dmg
+	rm -f build/bin/VocaGlyph.dmg
 	create-dmg \
-		--volname "Voice To Text Installer" \
-		--volicon "build/bin/voice-to-text.app/Contents/Resources/iconfile.icns" \
+		--volname "VocaGlyph Installer" \
+		--volicon "build/bin/VocaGlyph.app/Contents/Resources/iconfile.icns" \
 		--window-pos 200 120 \
 		--window-size 600 400 \
 		--icon-size 100 \
-		--icon "voice-to-text.app" 150 190 \
-		--hide-extension "voice-to-text.app" \
+		--icon "VocaGlyph.app" 150 190 \
+		--hide-extension "VocaGlyph.app" \
 		--app-drop-link 450 190 \
-		"build/bin/voice-to-text.dmg" \
-		"build/bin/voice-to-text.app"
+		--icon ".VolumeIcon.icns" 1000 1000 \
+		"build/bin/VocaGlyph.dmg" \
+		"build/bin/VocaGlyph.app"

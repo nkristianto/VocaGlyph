@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -303,10 +304,13 @@ func (a *App) Quit() {
 		//    calls exit(). If we don't, ggml-metal's C++ static destructor asserts
 		//    that residency sets are empty, crashing with SIGABRT.
 		if a.whisper != nil {
+			log.Printf("quit: closing whisper model to release Metal bindings...")
 			if err := a.whisper.Close(); err != nil {
 				log.Printf("quit: whisper.Close() error: %v", err)
 			}
 		}
+		// Wait briefly to ensure CGo memory is fully reclaimed by ggml-metal queue.
+		<-(time.After(100 * time.Millisecond))
 		runtime.Quit(ctx)
 	}()
 }

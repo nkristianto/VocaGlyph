@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { GetStatus, GetLaunchAtLogin, SetLaunchAtLogin, OpenSystemSettings, GetConfig, SetModel, SetLanguage, GetHotkey, SetHotkey, GetModelStatuses, DownloadModel } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetPosition, WindowGetPosition } from '../wailsjs/runtime/runtime';
+import logo from './assets/appicon.png';
 
 // App state drives .vtt-state-* class on root — controls all visual states
 const APP_STATES = {
@@ -552,11 +553,11 @@ function App() {
                 >
                     {/* Mic icon */}
                     <div id="vtt-mic-icon" className="vtt-mic-icon" aria-label="Microphone" role="img">
-                        🎙
+                        <img src={logo} alt="VocaGlyph Microphone" className="vtt-mic-icon-img" />
                     </div>
 
                     {/* App title */}
-                    <div id="vtt-title" className="vtt-title">voice-to-text</div>
+                    <div id="vtt-title" className="vtt-title">VocaGlyph</div>
 
                     {/* Status text */}
                     <div id="vtt-status" className="vtt-status-text" aria-live="polite" aria-atomic="true">
@@ -641,6 +642,17 @@ function App() {
 
                 {/* Clipboard fallback toast — shown briefly after paste failure */}
                 {showClipboardToast && <ClipboardToast />}
+
+                {/* Development version message */}
+                <div style={{
+                    marginTop: '8px',
+                    textAlign: 'center',
+                    fontFamily: 'var(--vtt-font)',
+                    fontSize: '10px',
+                    color: 'var(--vtt-text-tertiary)'
+                }}>
+                    App is still under development • v0.0.1
+                </div>
             </div>
         </>
     );
