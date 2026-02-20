@@ -140,8 +140,16 @@ func (ms *ModelService) GetModelStatuses() map[string]string {
 	return result
 }
 
-// ModelPath returns the expected file path for the given model name.
+// ModelPath returns the expected file path for the given model name,
+// looking up the exact FileName from the registry so models like
+// large-v3-turbo (which use .bin rather than .en.bin) resolve correctly.
 func (ms *ModelService) ModelPath(name string) string {
+	for _, m := range modelRegistry {
+		if m.Name == name {
+			return filepath.Join(ms.modelsDir, m.FileName)
+		}
+	}
+	// Fallback for unknown names — best-effort using the .en.bin convention.
 	return filepath.Join(ms.modelsDir, "ggml-"+name+".en.bin")
 }
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -329,8 +330,18 @@ func (a *App) SetModel(model string) error {
 	if a.modelService != nil {
 		modelPath = a.modelService.ModelPath(model)
 	} else {
-		home, _ := os.UserHomeDir()
-		modelPath = home + "/.voice-to-text/models/ggml-" + model + ".en.bin"
+		// No ModelService — look up registry directly for correct filename.
+		for _, m := range modelRegistry {
+			if m.Name == model {
+				home, _ := os.UserHomeDir()
+				modelPath = filepath.Join(home, ".voice-to-text", "models", m.FileName)
+				break
+			}
+		}
+		if modelPath == "" {
+			home, _ := os.UserHomeDir()
+			modelPath = home + "/.voice-to-text/models/ggml-" + model + ".en.bin"
+		}
 	}
 	// Check that the file exists before attempting to reload — return a
 	// user-friendly error so the frontend can show a download prompt.
