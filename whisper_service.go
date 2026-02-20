@@ -57,9 +57,11 @@ func (r *realWhisperBackend) Load(modelPath string) error {
 	//
 	// SetThreads: M4 has 10 cores (4e+6p); 8 keeps UI/audio threads free.
 	ctx.SetThreads(8)
-	// SetBeamSize(1): greedy decoding instead of beam-search (beam_size=5).
-	// Drastic speedup with negligible accuracy loss for short en-only clips.
-	ctx.SetBeamSize(1)
+	// SetBeamSize(2): balanced quality/speed. beam_size=5 (default) is most
+	// accurate but explores 5 candidate paths; beam_size=1 (greedy) is fastest
+	// but may miss words in longer/complex sentences. beam_size=2 gives ~2x
+	// speedup vs default with negligible quality loss for short dictation clips.
+	ctx.SetBeamSize(2)
 	// SetAudioCtx: reduce encoder context from 1500→768 frames (~15s→~7.5s).
 	// Any recording longer than ~7.5s uses the full window anyway; for typical
 	// 1–5s dictation bursts this halves the encoder compute.
