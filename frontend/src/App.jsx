@@ -83,12 +83,12 @@ function ClipboardToast() {
 // Model picker + language selector, collapsed below the divider.
 const MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3'];
 const MODEL_META = {
-    tiny: { label: 'Tiny', size: '75 MB' },
-    base: { label: 'Base', size: '142 MB' },
-    small: { label: 'Small', size: '466 MB' },
-    medium: { label: 'Medium', size: '769 MB' },
-    'large-v3-turbo': { label: 'Large v3 Turbo ⭐', size: '838 MB' },
-    'large-v3': { label: 'Large v3', size: '3.1 GB' },
+    tiny: { label: 'Tiny', short: 'tiny', size: '75 MB' },
+    base: { label: 'Base', short: 'base', size: '142 MB' },
+    small: { label: 'Small', short: 'small', size: '466 MB' },
+    medium: { label: 'Medium', short: 'med', size: '769 MB' },
+    'large-v3-turbo': { label: 'Large v3 Turbo ⭐', short: 'turbo', size: '838 MB' },
+    'large-v3': { label: 'Large v3', short: 'large', size: '3.1 GB' },
 };
 const LANGUAGES = [
     { value: 'en', label: 'English' },
@@ -159,7 +159,7 @@ function SettingsPanel({ config, modelStatuses, onModelChange, onModelDownload, 
                                 aria-pressed={isActive}
                                 title={isDone ? `Switch to ${MODEL_META[m].label}` : `Download ${MODEL_META[m].label} (${MODEL_META[m].size})`}
                             >
-                                <span className="vtt-model-btn__name">{m}</span>
+                                <span className="vtt-model-btn__name">{MODEL_META[m]?.short || m}</span>
                                 <span className="vtt-model-btn__status">
                                     {isDone ? '✅' : isDownloading ? `${pct}%` : '⬇'}
                                 </span>
@@ -388,6 +388,13 @@ function App() {
             // Reject so HotkeyCapture can show error flash
             .catch((err) => { console.error('SetHotkey failed:', err); return Promise.reject(err); });
     }
+
+    // Auto-dismiss ModelMissingBanner once any model is in 'downloaded' state.
+    // Handles the case where model:missing fires at startup but models already exist.
+    useEffect(() => {
+        const hasDownloaded = Object.values(modelStatuses).some((s) => s === 'downloaded');
+        if (hasDownloaded) setShowModelMissing(false);
+    }, [modelStatuses]);
 
     // Listen for hotkey + audio events from Go backend
     useEffect(() => {
