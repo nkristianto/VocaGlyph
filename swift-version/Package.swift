@@ -24,6 +24,9 @@ let package = Package(
             name: "voice-to-text",
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit")
+            ],
+            resources: [
+                .process("Resources")
             ]
         ),
         .testTarget(

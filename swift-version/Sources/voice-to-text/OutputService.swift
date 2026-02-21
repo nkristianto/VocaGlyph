@@ -1,5 +1,6 @@
 import Cocoa
 import ApplicationServices
+import CoreGraphics
 
 class OutputService {
     
@@ -7,13 +8,32 @@ class OutputService {
     func handleTranscriptionValue(_ text: String) {
         guard !text.isEmpty else { return }
         
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedText.isEmpty { return }
+        var processedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        print("OutputService attempting to paste: '\(trimmedText)'")
+        let shouldRemoveFillers = UserDefaults.standard.bool(forKey: "removeFillerWords")
+        if shouldRemoveFillers {
+            // Remove common conversational filler words.
+            // (?i) makes it case-insensitive.
+            // \b ensures we match whole words only (so we don't turn "plumber" into "plber" by removing "um").
+            // [\s,]* optionally matched trailing spaces and commas.
+            let pattern = "(?i)\\b(um|uh|ah|like|you know)\\b[\\s,]*"
+            
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                let range = NSRange(location: 0, length: processedText.utf16.count)
+                processedText = regex.stringByReplacingMatches(in: processedText, options: [], range: range, withTemplate: " ")
+            }
+            
+            // Clean up any double spaces introduced by replacement
+            processedText = processedText.replacingOccurrences(of: "  ", with: " ")
+            processedText = processedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        if processedText.isEmpty { return }
+        
+        print("Transcription: \(processedText)")
         
         // 1. Copy text to the system pasteboard
-        copyToPasteboard(text: trimmedText + " ") // Add a trailing space for fluid dictation UX
+        copyToPasteboard(text: processedText + " ") // Add a trailing space for fluid dictation UX
         
         // 2. Play a subtle success sound
         NSSound(named: NSSound.Name("Pop"))?.play()

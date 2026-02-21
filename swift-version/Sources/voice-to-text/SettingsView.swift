@@ -1,125 +1,699 @@
 import SwiftUI
+import ServiceManagement
+
+enum SettingsTab: Hashable {
+    case general
+    case model
+}
 
 struct SettingsView: View {
-    @ObservedObject var stateManager: AppStateManager
-    var whisper: WhisperService
+    @ObservedObject var whisper: WhisperService
+    let stateManager: AppStateManager
     
-    // AppStorage for UserDefaults persistence
-    @AppStorage("selectedModel") private var selectedModel: String = "large-v3-v20240930"
-    
-    let availableModels = [
-        "large-v3-v20240930": "Large V3 Turbo (Recommended)",
-        "base": "Base (Fast)",
-        "small": "Small",
-        "medium": "Medium"
-    ]
+    @State private var selectedTab: SettingsTab? = .general
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            
-            // Header
-            HStack {
-                Image(systemName: "mic.fill")
-                    .foregroundColor(.blue)
-                Text("Voice to Text Engine")
-                    .font(.headline)
-            }
-            .padding(.bottom, 4)
+        HStack(spacing: 0) {
+            // Custom Sidebar
+            CustomSidebar(selectedTab: $selectedTab)
+                .frame(width: 240)
+                .background(Color.white.opacity(0.5)) // Slight transparency for the sidebar
             
             Divider()
+                .overlay(Theme.textMuted.opacity(0.1))
             
-            // State Indicator
-            HStack {
-                Text("Current State:")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+            // Main Content Area
+            ZStack {
+                Color.white.opacity(0.8) // Whiter main area
                 
-                Spacer()
-                
-                Group {
-                    if stateManager.currentState == .idle {
-                        Text("Idle")
-                            .foregroundColor(.secondary)
-                    } else if stateManager.currentState == .recording {
-                        HStack {
-                            Image(systemName: "waveform.circle.fill")
-                            Text("Recording...")
-                        }
-                        .foregroundColor(.red)
-                    } else if stateManager.currentState == .processing {
-                        HStack {
-                            Image(systemName: "hourglass.circle.fill")
-                            Text("Processing...")
-                        }
-                        .foregroundColor(.orange)
-                    }
+                switch selectedTab {
+                case .general:
+                    GeneralSettingsView(whisper: whisper)
+                case .model:
+                    ModelSettingsView(whisper: whisper)
+                case .none:
+                    Text("Select an item").foregroundStyle(Theme.textMuted)
                 }
-                .font(.subheadline.bold())
             }
-            
-            // Settings Form
-            VStack(alignment: .leading, spacing: 8) {
-                Text("AI Transcription Model")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                Picker("", selection: $selectedModel) {
-                    ForEach(Array(availableModels.keys.sorted()), id: \.self) { key in
-                        Text(availableModels[key] ?? key).tag(key)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .onChange(of: selectedModel) { newValue in
-                    whisper.changeModel(to: newValue)
-                }
-                
-                Text("**Note:** Models download on first use. Larger models improve accuracy but take more memory.")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 8)
-            
-            Divider()
-                .padding(.vertical, 4)
-            
-            // Hotkey visual mapping (Mock representation for 9.6)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Global Shortcut")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                
-                HStack {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                            .frame(height: 28)
-                        
-                        Text("⌃ ⇧ C")
-                            .font(.system(.body, design: .monospaced).bold())
-                    }
-                    
-                    Spacer()
-                }
-                Text("Hold to record. Release to transcribe & paste.")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-            }
-            
-            Divider()
-            
-            HStack {
-                Button("Quit Voice to Text") {
-                    NSApplication.shared.terminate(nil)
-                }
-                .buttonStyle(.link)
-                .foregroundColor(.secondary)
-                
-                Spacer()
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(20)
-        .frame(width: 320)
+        .frame(minWidth: 850, minHeight: 650)
+        .background(Theme.background) // Base background
+        .environment(\.font, .system(size: 14))
+        .ignoresSafeArea(.all, edges: .all) // Allow drawing into titlebar AND bottom safe areas
     }
 }
+
+struct CustomSidebar: View {
+    @Binding var selectedTab: SettingsTab?
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Padding for native macOS traffic lights (red/yellow/green buttons)
+            Spacer().frame(height: 60) // Increased by 10px for live margin
+            
+            // App Identity
+            HStack(spacing: 24) {
+                if let imgUrl = Bundle.module.url(forResource: "appicon", withExtension: "png"),
+                   let nsImage = NSImage(contentsOf: imgUrl) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8)) // App icons are typically squircles
+                        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+                } else {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Theme.accent, Theme.navy], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 40, height: 40)
+                            .opacity(0.8)
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 16).bold())
+                            .foregroundStyle(.white)
+                    }
+                }
+                Text("VocaGlyph")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.navy)
+            }
+            .padding(.leading, 16) // Exact alignment with traffic lights
+            .padding(.bottom, 24)
+            
+            // Navigation Links
+            VStack(spacing: 4) {
+                SidebarItemView(title: "General", icon: "gearshape.fill", tab: .general, selectedTab: $selectedTab)
+                SidebarItemView(title: "Model", icon: "brain.head.profile", tab: .model, selectedTab: $selectedTab)
+            }
+            .padding(.horizontal, 6) // Container padding 6 + Inner 10 = 16pt icon alignment
+            
+            Spacer()
+            
+            // Footer
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Under Development")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                Text("Version 0.0.1 (Beta)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .padding(.leading, 18)
+            .padding(.bottom, 24)
+        }
+    }
+}
+
+struct SidebarItemView: View {
+    let title: String
+    let icon: String
+    let tab: SettingsTab
+    @Binding var selectedTab: SettingsTab?
+    
+    var isSelected: Bool { selectedTab == tab }
+    
+    var body: some View {
+        Button(action: {
+            selectedTab = tab
+        }) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
+                    .frame(width: 20)
+                
+                Text(title)
+                    .font(.system(size: 14).weight(isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 10) // Inner padding 10
+            .padding(.vertical, 10)
+            .contentShape(Rectangle()) // Make the entire area clickable
+            .background(isSelected ? Theme.accent.opacity(0.15) : Color.clear)
+            .clipShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering in
+            if isHovering && !isSelected {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
+}
+
+struct GeneralSettingsView: View {
+    @ObservedObject var whisper: WhisperService
+    
+    @AppStorage("globalShortcutPreset") private var globalShortcutPreset: String = GlobalShortcutOption.ctrlShiftC.rawValue
+    @AppStorage("dictationLanguage") private var dictationLanguage: String = "English (US)"
+    @AppStorage("autoPunctuation") private var autoPunctuation: Bool = true
+    @AppStorage("removeFillerWords") private var removeFillerWords: Bool = false
+    @AppStorage("selectedModel") private var selectedModel: String = "tiny"
+    
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLogin },
+            set: { newValue in
+                launchAtLogin = newValue
+                do {
+                    if newValue {
+                        try SMAppService.mainApp.register()
+                    } else {
+                        try SMAppService.mainApp.unregister()
+                    }
+                } catch {
+                    print("Failed to update Launch at Login: \(error.localizedDescription)")
+                    launchAtLogin = SMAppService.mainApp.status == .enabled
+                }
+            }
+        )
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("General Settings")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                    Text("Configure voice input, system integration, and application behavior")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(.bottom, 8)
+                
+                // Input Configuration Section
+                VStack(alignment: .leading, spacing: 16) {
+                    Label {
+                        Text("Input Configuration")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Theme.navy)
+                    } icon: {
+                        Image(systemName: "mic")
+                            .foregroundStyle(Theme.navy)
+                    }
+                    
+                    VStack(spacing: 0) {
+                        // Global Shortcut
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Global Shortcut")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Press to start/stop dictation")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Menu {
+                                ForEach(GlobalShortcutOption.allCases) { option in
+                                    Button(option.rawValue) {
+                                        globalShortcutPreset = option.rawValue
+                                    }
+                                }
+                            } label: {
+                                Text(globalShortcutPreset)
+                                    .font(.system(.body, design: .monospaced))
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(Theme.navy)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.white)
+                                    .clipShape(.rect(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
+                        }
+                        .padding(16)
+                        
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Dictation Language
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Dictation Language")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Primary language for transcription")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Menu {
+                                Button("English (US)") { dictationLanguage = "English (US)" }
+                                Button("Spanish (ES)") { dictationLanguage = "Spanish (ES)" }
+                                Button("French (FR)") { dictationLanguage = "French (FR)" }
+                                Button("German (DE)") { dictationLanguage = "German (DE)" }
+                            } label: {
+                                HStack {
+                                    Text(dictationLanguage)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.navy)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.background)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                                )
+                                .contentShape(Rectangle()) // Ensure entire area is clickable
+                            }
+                            .buttonStyle(.plain) // Use plain button style to draw the custom label properly
+                            .frame(width: 140)
+                        }
+                        .padding(16)
+                        
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Auto-Punctuation
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-Punctuation")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Automatically add commas, periods, and question marks")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $autoPunctuation)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                        .padding(16)
+                        
+                        Divider()
+                            .background(Theme.textMuted.opacity(0.1))
+                            .padding(.horizontal, 16)
+                            
+                        // Filter Filler Words
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Remove Filler Words")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Automatically strip conversational words (um, uh, like)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $removeFillerWords)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                        .padding(16)
+                    }
+                    .background(Color.white)
+                    .clipShape(.rect(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                    )
+                }
+                
+                // System Integration Section
+                VStack(alignment: .leading, spacing: 16) {
+                    Label {
+                        Text("System Integration")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Theme.navy)
+                    } icon: {
+                        Image(systemName: "macwindow")
+                            .foregroundStyle(Theme.navy)
+                    }
+                    
+                    VStack(spacing: 0) {
+                        // Launch at Login
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Launch at Login")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Automatically start VocaGlyph when you log into macOS")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: launchAtLoginBinding)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                        .padding(16)
+                    }
+                    .background(Color.white)
+                    .clipShape(.rect(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                    )
+                }
+            }
+            .padding(40)
+            .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
+        }
+    }
+}
+
+struct ModelSettingsView: View {
+    @ObservedObject var whisper: WhisperService
+    @AppStorage("selectedModel") private var selectedModel: String = "tiny"
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 32) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Model Settings")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                    Text("Manage offline transcription models")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(.bottom, 8)
+                
+                // AI Model Section
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Label {
+                            Text("AI Model Local Inference")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(Theme.navy)
+                        } icon: {
+                            Image(systemName: "brain.head.profile")
+                                .foregroundStyle(Theme.navy)
+                        }
+                    }
+                    
+                    ScrollView {
+                        VStack(spacing: 12) {
+                        ModelCardView(
+                            title: "Tiny (Recommended)",
+                            description: "Fastest inference. Suitable for quick commands, basic punctuation, and short sentences.",
+                            size: "75 MB",
+                            isSelected: selectedModel == "tiny",
+                            isDownloaded: whisper.downloadedModels.contains("tiny"),
+                            isActive: whisper.activeModel == "tiny",
+                            isLoading: whisper.loadingModel == "tiny",
+                            downloadProgress: whisper.downloadProgresses["tiny"],
+                            onSelect: {
+                                selectedModel = "tiny"
+                            },
+                            onUse: {
+                                whisper.changeModel(to: "tiny")
+                            },
+                            onDownload: {
+                                whisper.downloadModel("tiny")
+                            },
+                            onDelete: {
+                                whisper.deleteModel("tiny")
+                            }
+                        )
+                        
+                        ModelCardView(
+                            title: "Base",
+                            description: "Balanced performance. Good trade-off between speed and accuracy for longer dictation.",
+                            size: "140 MB",
+                            isSelected: selectedModel == "base",
+                            isDownloaded: whisper.downloadedModels.contains("base"),
+                            isActive: whisper.activeModel == "base",
+                            isLoading: whisper.loadingModel == "base",
+                            downloadProgress: whisper.downloadProgresses["base"],
+                            onSelect: {
+                                selectedModel = "base"
+                            },
+                            onUse: {
+                                whisper.changeModel(to: "base")
+                            },
+                            onDownload: {
+                                whisper.downloadModel("base")
+                            },
+                            onDelete: {
+                                whisper.deleteModel("base")
+                            }
+                        )
+                        
+                        ModelCardView(
+                            title: "Base (English Only)",
+                            description: "Optimized for English. Slightly better accuracy and speed than standard Base.",
+                            size: "140 MB",
+                            isSelected: selectedModel == "base.en",
+                            isDownloaded: whisper.downloadedModels.contains("base.en"),
+                            isActive: whisper.activeModel == "base.en",
+                            isLoading: whisper.loadingModel == "base.en",
+                            downloadProgress: whisper.downloadProgresses["base.en"],
+                            onSelect: {
+                                selectedModel = "base.en"
+                            },
+                            onUse: {
+                                whisper.changeModel(to: "base.en")
+                            },
+                            onDownload: {
+                                whisper.downloadModel("base.en")
+                            },
+                            onDelete: {
+                                whisper.deleteModel("base.en")
+                            }
+                        )
+                        
+                        ModelCardView(
+                            title: "Small",
+                            description: "Higher accuracy with acceptable speeds on modern Mac hardware.",
+                            size: "240 MB",
+                            isSelected: selectedModel == "small",
+                            isDownloaded: whisper.downloadedModels.contains("small"),
+                            isActive: whisper.activeModel == "small",
+                            isLoading: whisper.loadingModel == "small",
+                            downloadProgress: whisper.downloadProgresses["small"],
+                            onSelect: {
+                                selectedModel = "small"
+                            },
+                            onUse: {
+                                whisper.changeModel(to: "small")
+                            },
+                            onDownload: {
+                                whisper.downloadModel("small")
+                            },
+                            onDelete: {
+                                whisper.deleteModel("small")
+                            }
+                        )
+                        
+                        ModelCardView(
+                            title: "Distil Large v3",
+                            description: "Maximum accuracy. Heavy memory footprint and slower inference, recommended for Apple Silicon.",
+                            size: "1.5 GB",
+                            isSelected: selectedModel == "distil-large-v3",
+                            isDownloaded: whisper.downloadedModels.contains("distil-large-v3"),
+                            isActive: whisper.activeModel == "distil-large-v3",
+                            isLoading: whisper.loadingModel == "distil-large-v3",
+                            downloadProgress: whisper.downloadProgresses["distil-large-v3"],
+                            onSelect: {
+                                selectedModel = "distil-large-v3"
+                            },
+                            onUse: {
+                                whisper.changeModel(to: "distil-large-v3")
+                            },
+                            onDownload: {
+                                whisper.downloadModel("distil-large-v3")
+                            },
+                            onDelete: {
+                                whisper.deleteModel("distil-large-v3")
+                            }
+                        )
+                    }
+                    .padding(.trailing, 8) // Scrollbar clearance
+                }
+                
+
+                }
+            }
+            .padding([.horizontal, .top], 40)
+            .padding(.bottom, 0)
+    }
+}
+
+struct ModelCardView: View {
+    let title: String
+    let description: String
+    let size: String
+    let isSelected: Bool
+    let isDownloaded: Bool
+    let isActive: Bool
+    let isLoading: Bool
+    let downloadProgress: Float?
+    let onSelect: () -> Void
+    let onUse: () -> Void
+    let onDownload: () -> Void
+    let onDelete: () -> Void
+    
+    @State private var showDeleteConfirmation = false
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
+                .font(.system(size: 16))
+                .padding(.top, 2)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(isActive ? Color.green : Theme.navy)
+                    Spacer()
+                    if isActive {
+                        Text("ACTIVE")
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .foregroundStyle(.white)
+                            .clipShape(.rect(cornerRadius: 4))
+                    } else if isDownloaded {
+                        Text("DOWNLOADED")
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.accent.opacity(0.1))
+                            .foregroundStyle(Theme.accent)
+                            .clipShape(.rect(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.accent.opacity(0.2), lineWidth: 1))
+                    }
+                    
+                    Text(size)
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.background)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.textMuted.opacity(0.1), lineWidth: 1))
+                        .foregroundStyle(Theme.textMuted)
+                        .clipShape(.rect(cornerRadius: 4))
+                }
+                Text(description)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+                    .lineLimit(2)
+                
+                HStack {
+                    if !isDownloaded {
+                        if let progress = downloadProgress {
+                            HStack(spacing: 6) {
+                                if #available(macOS 14.0, *) {
+                                    Image(systemName: "arrow.down.circle")
+                                        .foregroundStyle(Theme.accent)
+                                        .symbolEffect(.pulse, options: .repeating)
+                                } else {
+                                    Image(systemName: "arrow.down.circle")
+                                        .foregroundStyle(Theme.accent)
+                                }
+                                
+                                Text("\(Int(progress * 100))%")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(Theme.accent)
+                                    .contentTransition(.numericText())
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(Theme.accent.opacity(0.1))
+                            .clipShape(.rect(cornerRadius: 6))
+                        } else {
+                            Button(action: onDownload) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.down.circle")
+                                    Text("Download")
+                                }
+                                .font(.system(size: 11, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.accent)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(Theme.accent.opacity(0.1))
+                            .clipShape(.rect(cornerRadius: 6))
+                        }
+                    } else if !isActive {
+                        HStack(spacing: 8) {
+                            Button(action: onUse) {
+                                HStack(spacing: 4) {
+                                    if isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(.circular)
+                                            .controlSize(.small)
+                                            .padding(.trailing, 2)
+                                        Text("Initializing...")
+                                    } else {
+                                        Image(systemName: "play.circle")
+                                        Text("Use Model")
+                                    }
+                                }
+                                .font(.system(size: 11, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isLoading)
+                            .foregroundStyle(isLoading ? Theme.textMuted : Theme.navy)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background((isLoading ? Theme.textMuted : Theme.navy).opacity(0.1))
+                            .clipShape(.rect(cornerRadius: 6))
+                            
+                            Button(action: { showDeleteConfirmation = true }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "trash")
+                                    Text("Delete")
+                                }
+                                .font(.system(size: 11, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isLoading)
+                            .foregroundStyle(.red)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(Color.red.opacity(0.1))
+                            .clipShape(.rect(cornerRadius: 6))
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(16)
+        .background(isSelected ? Theme.navy.opacity(0.05) : Color.white)
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isSelected ? Theme.navy : Theme.textMuted.opacity(0.2), lineWidth: 1)
+        )
+        .contentShape(Rectangle()) // Makes the whole card area tappable
+        .onTapGesture {
+            onSelect()
+        }
+        .alert(isPresented: $showDeleteConfirmation) {
+            Alert(
+                title: Text("Delete \(title)?"),
+                message: Text("Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription."),
+                primaryButton: .destructive(Text("Delete")) {
+                    onDelete()
+                },
+                secondaryButton: .cancel()
+            )
+        }
+    }
+}
+

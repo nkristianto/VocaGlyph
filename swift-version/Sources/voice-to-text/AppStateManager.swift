@@ -3,6 +3,7 @@ import Combine
 
 enum AppState {
     case idle
+    case initializing
     case recording
     case processing
 }
@@ -30,5 +31,9 @@ class AppStateManager: ObservableObject {
     
     func setIdle() {
         currentState = .idle
+    }
+    
+    func setInitializing() {
+        currentState = .initializing
     }
 }

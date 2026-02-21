@@ -2,20 +2,60 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+enum GlobalShortcutOption: String, CaseIterable, Identifiable {
+    case ctrlShiftC = "⌃ ⇧ C"
+    case optionSpace = "⌥ Space"
+    case cmdShiftSpace = "⌘ ⇧ Space"
+    case ctrlSpace = "⌃ Space"
+    
+    var id: String { self.rawValue }
+    
+    var keyCode: CGKeyCode {
+        switch self {
+        case .ctrlShiftC: return 8 // C
+        case .optionSpace, .cmdShiftSpace, .ctrlSpace: return 49 // Space
+        }
+    }
+    
+    var flags: CGEventFlags {
+        switch self {
+        case .ctrlShiftC: return [.maskControl, .maskShift]
+        case .optionSpace: return [.maskAlternate]
+        case .cmdShiftSpace: return [.maskCommand, .maskShift]
+        case .ctrlSpace: return [.maskControl]
+        }
+    }
+}
+
+
 class HotkeyService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     
-    // We are looking for Ctrl (Control) + Shift + C
-    // "C" is keycode 8 on macOS
-    private let targetKeyCode: CGKeyCode = 8
-    private let targetFlags: CGEventFlags = [.maskControl, .maskShift]
+    private var targetKeyCode: CGKeyCode = 8
+    private var targetFlags: CGEventFlags = [.maskControl, .maskShift]
     
     private let stateManager: AppStateManager
+    private let canRecordCallback: () -> Bool
     private var isRecording = false
     
-    init(stateManager: AppStateManager) {
+    init(stateManager: AppStateManager, canRecordCallback: @escaping () -> Bool) {
         self.stateManager = stateManager
+        self.canRecordCallback = canRecordCallback
+        
+        loadShortcutFromDefaults()
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.loadShortcutFromDefaults()
+        }
+    }
+    
+    private func loadShortcutFromDefaults() {
+        let presetRaw = UserDefaults.standard.string(forKey: "globalShortcutPreset") ?? GlobalShortcutOption.ctrlShiftC.rawValue
+        let preset = GlobalShortcutOption(rawValue: presetRaw) ?? .ctrlShiftC
+        
+        self.targetKeyCode = preset.keyCode
+        self.targetFlags = preset.flags
+        print("Hotkey Service updated to listen for: \(presetRaw) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")
     }
     
     func start() {
@@ -69,34 +109,43 @@ class HotkeyService {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
         
-        // Exact match for Ctrl + Shift + C
-        let matchesMask = flags.contains(.maskControl) && flags.contains(.maskShift)
-        // Ensure no other conflicting modifier masks are present that we don't want (like Command or Option)
-        let noCommand = !flags.contains(.maskCommand)
-        let noOption = !flags.contains(.maskAlternate)
+        // Match required masks completely (for keyDown only)
+        var matchesMask = true
+        if targetFlags.contains(.maskControl) { matchesMask = matchesMask && flags.contains(.maskControl) } else { matchesMask = matchesMask && !flags.contains(.maskControl) }
+        if targetFlags.contains(.maskShift) { matchesMask = matchesMask && flags.contains(.maskShift) } else { matchesMask = matchesMask && !flags.contains(.maskShift) }
+        if targetFlags.contains(.maskCommand) { matchesMask = matchesMask && flags.contains(.maskCommand) } else { matchesMask = matchesMask && !flags.contains(.maskCommand) }
+        if targetFlags.contains(.maskAlternate) { matchesMask = matchesMask && flags.contains(.maskAlternate) } else { matchesMask = matchesMask && !flags.contains(.maskAlternate) }
         
-        if keyCode == targetKeyCode && matchesMask && noCommand && noOption {
-            if type == .keyDown {
+        if keyCode == targetKeyCode {
+            if type == .keyDown && matchesMask {
                 if !isRecording {
+                    guard canRecordCallback() else {
+                        NSSound.beep()
+                        return nil // Consume event
+                    }
+                    
                     isRecording = true
                     DispatchQueue.main.async {
                         self.stateManager.startRecording()
                     }
                 }
+                return nil // Consume event
             } else if type == .keyUp {
+                // If it's keyUp and we are recording, stop it immediately, regardless of whether modifiers are still held
                 if isRecording {
                     isRecording = false
                     DispatchQueue.main.async {
                         self.stateManager.stopRecording()
                     }
-                    // Simulate processing delay for scaffolding purposes, will be replaced by WhisperKit later
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        self.stateManager.setIdle()
-                    }
+                    // Consume the event to prevent system from handling the orphaned keyUp
+                    return nil
+                }
+                
+                // If we aren't recording but the keys match perfectly, consume it anyway
+                if matchesMask {
+                    return nil
                 }
             }
-            // Consume the event so it isn't passed to the active application
-            return nil 
         }
         
         return Unmanaged.passUnretained(event)
