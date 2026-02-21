@@ -119,7 +119,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     }
     
     private func initializeWhisper(modelName: String) async {
-        print("Initializing WhisperKit...")
+        Logger.shared.info("WhisperService: Initializing WhisperKit...")
         do {
             let available = getDownloadedModelsSync()
             if !available.contains(modelName) {
@@ -129,6 +129,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                     self.isReady = false
                     self.loadingModel = nil
                 }
+                Logger.shared.info("WhisperService: Cannot initialize model '\(modelName)', not downloaded.")
                 return
             }
             
@@ -139,16 +140,11 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             
             let modelPath = actualModelsDirectory.appendingPathComponent("openai_whisper-\(modelName)")
             
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "HH:mm:ss.SSS"
-            let timeString = dateFormatter.string(from: Date())
-            
-            print("[\(timeString)] Model available at \(modelPath). Initializing Engine...")
+            Logger.shared.info("WhisperService: Model available at \(modelPath). Loading into memory...")
             whisperKit = try await WhisperKit(modelFolder: modelPath.path)
             isReady = true
             
-            let timeStringReady = dateFormatter.string(from: Date())
-            print("[\(timeStringReady)] WhisperKit is ready using model: \(modelName)")
+            Logger.shared.info("WhisperService: WhisperKit is ready using model: \(modelName)")
             
             DispatchQueue.main.async {
                 self.activeModel = modelName
@@ -159,7 +155,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             
             delegate?.whisperServiceDidUpdateState("Ready")
         } catch {
-            print("Failed to initialize WhisperKit: \(error.localizedDescription)")
+            Logger.shared.error("WhisperService: Failed to initialize WhisperKit: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.loadingModel = nil
             }
@@ -169,6 +165,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     
     // MARK: - Dynamic Configuration
     func changeModel(to modelName: String) {
+        Logger.shared.info("WhisperService: Requested model change to '\(modelName)'")
         // Only load the engine if the model is actually downloaded.
         isReady = false
         let available = getDownloadedModelsSync()
@@ -178,6 +175,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 await initializeWhisper(modelName: modelName)
             }
         } else {
+            Logger.shared.info("WhisperService: Model '\(modelName)' not downloaded, ignoring change request.")
             DispatchQueue.main.async {
                 self.downloadState = "Model not downloaded."
             }
@@ -185,6 +183,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     }
     
     func downloadModel(_ modelName: String) {
+        Logger.shared.info("WhisperService: Starting download for model '\(modelName)'")
         DispatchQueue.main.async {
             self.downloadState = "Downloading"
             self.downloadProgresses[modelName] = 0.0
@@ -199,6 +198,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                     }
                 })
                 
+                Logger.shared.info("WhisperService: Successfully downloaded model '\(modelName)'")
                 checkDownloadedModels()
                 
                 DispatchQueue.main.async {
@@ -208,11 +208,12 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 
                 // If this is the currently selected model, initialize it now
                 if defaultModelName == modelName {
+                    Logger.shared.info("WhisperService: Downloaded model '\(modelName)' is the default target. Initializing...")
                     await initializeWhisper(modelName: modelName)
                 }
                 
             } catch {
-                print("Download failed: \(error)")
+                Logger.shared.error("WhisperService: Download failed for model '\(modelName)': \(error)")
                 DispatchQueue.main.async {
                     self.downloadState = "Failed"
                     self.downloadProgresses.removeValue(forKey: modelName)
@@ -222,6 +223,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     }
     
     func deleteModel(_ modelName: String) {
+        Logger.shared.info("WhisperService: Requested to delete model '\(modelName)'")
         let fileManager = FileManager.default
         let modelDir = actualModelsDirectory.appendingPathComponent("openai_whisper-\(modelName)")
         
@@ -231,6 +233,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             
             // If we deleted the currently active model, unload it.
             if activeModel == modelName {
+                Logger.shared.info("WhisperService: Deleted model was the active model. Unloading WhisperKit...")
                 self.whisperKit = nil
                 self.isReady = false
                 DispatchQueue.main.async {
@@ -238,9 +241,9 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                     self.downloadState = "Model not downloaded."
                 }
             }
-            print("Deleted model \(modelName)")
+            Logger.shared.info("WhisperService: Successfully deleted model '\(modelName)'")
         } catch {
-            print("Failed to delete model: \(error)")
+            Logger.shared.error("WhisperService: Failed to delete model '\(modelName)': \(error)")
         }
     }
     
@@ -250,7 +253,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
 extension WhisperService: TranscriptionEngine {
     func transcribe(audioBuffer: AVAudioPCMBuffer) async throws -> String {
         guard isReady, let whisperKit = whisperKit else {
-            print("[\(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))] WhisperKit is not ready yet.")
+            Logger.shared.info("WhisperService: Cannot transcribe. WhisperKit is not ready yet.")
             DispatchQueue.main.async {
                 self.delegate?.whisperServiceDidUpdateState("Model warming up...")
             }
@@ -265,11 +268,7 @@ extension WhisperService: TranscriptionEngine {
         let channelData = UnsafeBufferPointer<Float>(start: floatChannelData[0], count: frameLength)
         let audioArray = Array(channelData)
         
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "HH:mm:ss.SSS"
-        
-        print("[\(dateFormatter.string(from: Date()))] Starting WhisperKit transcription on \(audioArray.count) frames...")
-        print("[\(dateFormatter.string(from: Date()))] Transcribing \(audioArray.count) samples using language code: \(dictationLanguageCode)")
+        Logger.shared.info("WhisperService: Starting transcription on \(audioArray.count) frames using language code: \(dictationLanguageCode)")
 
         // Prepare decoding options dynamically
         let decodingOptions = DecodingOptions(
@@ -282,7 +281,7 @@ extension WhisperService: TranscriptionEngine {
         
         let results = try await whisperKit.transcribe(audioArray: audioArray, decodeOptions: decodingOptions)
         let combinedText = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-        print("[\(dateFormatter.string(from: Date()))] Transcription finished: '\(combinedText)'")
+        Logger.shared.info("WhisperService: Transcription finished successfully.")
         
         return combinedText
     }

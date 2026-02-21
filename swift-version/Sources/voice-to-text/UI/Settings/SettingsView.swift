@@ -1,6 +1,19 @@
 import SwiftUI
 import ServiceManagement
 
+extension Binding {
+    func logged(name: String) -> Binding<Value> {
+        Binding(
+            get: { self.wrappedValue },
+            set: { newValue in
+                let oldValue = self.wrappedValue
+                Logger.shared.debug("Settings: Changed \(name) from '\(oldValue)' to '\(newValue)'")
+                self.wrappedValue = newValue
+            }
+        )
+    }
+}
+
 enum SettingsTab: Hashable {
     case general
     case model
@@ -39,6 +52,11 @@ struct SettingsView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: selectedTab) { newValue in
+                if let tab = newValue {
+                    Logger.shared.debug("Settings: Navigated to \(String(describing: tab)) tab")
+                }
+            }
         }
         .frame(minWidth: 850, minHeight: 650)
         .background(Theme.background) // Base background
@@ -164,6 +182,7 @@ struct GeneralSettingsView: View {
         Binding(
             get: { launchAtLogin },
             set: { newValue in
+                Logger.shared.debug("Settings: Changed Launch at Login from '\(launchAtLogin)' to '\(newValue)'")
                 launchAtLogin = newValue
                 do {
                     if newValue {
@@ -220,6 +239,7 @@ struct GeneralSettingsView: View {
                             Menu {
                                 ForEach(GlobalShortcutOption.allCases) { option in
                                     Button(option.rawValue) {
+                                        Logger.shared.debug("Settings: Changed Global Shortcut from '\(globalShortcutPreset)' to '\(option.rawValue)'")
                                         globalShortcutPreset = option.rawValue
                                     }
                                 }
@@ -258,10 +278,22 @@ struct GeneralSettingsView: View {
                             }
                             Spacer()
                             Menu {
-                                Button("English (US)") { dictationLanguage = "English (US)" }
-                                Button("Spanish (ES)") { dictationLanguage = "Spanish (ES)" }
-                                Button("French (FR)") { dictationLanguage = "French (FR)" }
-                                Button("German (DE)") { dictationLanguage = "German (DE)" }
+                                Button("English (US)") { 
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'English (US)'")
+                                    dictationLanguage = "English (US)" 
+                                }
+                                Button("Spanish (ES)") { 
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'Spanish (ES)'")
+                                    dictationLanguage = "Spanish (ES)" 
+                                }
+                                Button("French (FR)") { 
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'French (FR)'")
+                                    dictationLanguage = "French (FR)" 
+                                }
+                                Button("German (DE)") { 
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'German (DE)'")
+                                    dictationLanguage = "German (DE)" 
+                                }
                             } label: {
                                 HStack {
                                     Text(dictationLanguage)
@@ -300,7 +332,7 @@ struct GeneralSettingsView: View {
                                     .foregroundStyle(Theme.textMuted)
                             }
                             Spacer()
-                            Toggle("", isOn: $autoPunctuation)
+                            Toggle("", isOn: $autoPunctuation.logged(name: "Auto-Punctuation"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                         }
@@ -321,7 +353,7 @@ struct GeneralSettingsView: View {
                                     .foregroundStyle(Theme.textMuted)
                             }
                             Spacer()
-                            Toggle("", isOn: $removeFillerWords)
+                            Toggle("", isOn: $removeFillerWords.logged(name: "Remove Filler Words"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                         }
@@ -396,7 +428,7 @@ struct GeneralSettingsView: View {
                             }
                             Spacer()
                             @AppStorage("enableDebugLogging") var isDebugEnabled: Bool = false
-                            Toggle("", isOn: $isDebugEnabled)
+                            Toggle("", isOn: $isDebugEnabled.logged(name: "Debug Logging"))
                                 .labelsHidden()
                                 .toggleStyle(.switch)
                         }
@@ -418,6 +450,7 @@ struct GeneralSettingsView: View {
                             }
                             Spacer()
                             Button("Reveal in Finder") {
+                                Logger.shared.debug("Settings: Clicked Reveal in Finder")
                                 NSWorkspace.shared.selectFile(Logger.shared.getLogFileURL().path, inFileViewerRootedAtPath: "")
                             }
                             .buttonStyle(.plain)
@@ -489,7 +522,7 @@ struct PostProcessingSettingsView: View {
                                 .foregroundStyle(Theme.textMuted)
                         }
                         Spacer()
-                        Toggle("", isOn: $enablePostProcessing)
+                        Toggle("", isOn: $enablePostProcessing.logged(name: "Automated Text Refinement"))
                             .labelsHidden()
                             .toggleStyle(.switch)
                     }
@@ -510,7 +543,10 @@ struct PostProcessingSettingsView: View {
                             }
                             Spacer()
                             Menu {
-                                Button("Apple Intelligence") { selectedTaskModel = "apple-native" }
+                                Button("Apple Intelligence") { 
+                                    Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'apple-native'")
+                                    selectedTaskModel = "apple-native" 
+                                }
                                 // Future Dropdown items can go here
                             } label: {
                                 HStack {
@@ -565,7 +601,7 @@ struct PostProcessingSettingsView: View {
                                 .foregroundStyle(Theme.textMuted)
                             
                             if #available(macOS 14.0, *) {
-                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt, axis: .vertical)
+                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"), axis: .vertical)
                                     .lineLimit(2...4)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 13))
@@ -575,7 +611,7 @@ struct PostProcessingSettingsView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
                             } else {
-                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt)
+                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"))
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.navy)
@@ -897,7 +933,10 @@ struct ModelCardView: View {
                             .background(Theme.accent.opacity(0.1))
                             .clipShape(.rect(cornerRadius: 6))
                         } else {
-                            Button(action: onDownload) {
+                            Button(action: {
+                                Logger.shared.debug("Settings: Clicked Download for \(title)")
+                                onDownload()
+                            }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.down.circle")
                                     Text("Download")
@@ -913,7 +952,10 @@ struct ModelCardView: View {
                         }
                     } else if !isActive {
                         HStack(spacing: 8) {
-                            Button(action: onUse) {
+                            Button(action: {
+                                Logger.shared.debug("Settings: Clicked Use Model for \(title)")
+                                onUse()
+                            }) {
                                 HStack(spacing: 4) {
                                     if isLoading {
                                         ProgressView()
@@ -956,6 +998,7 @@ struct ModelCardView: View {
                                         title: Text("Delete \(title)?"),
                                         message: Text("Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription."),
                                         primaryButton: .destructive(Text("Delete")) {
+                                            Logger.shared.debug("Settings: Confirmed Delete for \(title)")
                                             deleteAction()
                                         },
                                         secondaryButton: .cancel()

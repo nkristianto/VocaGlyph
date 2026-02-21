@@ -43,9 +43,7 @@ class Logger {
     }
     
     func debug(_ message: String) {
-        #if DEBUG
         log(level: "DEBUG", message: message)
-        #endif
     }
     
     @AppStorage("enableDebugLogging") private var isDebugEnabled: Bool = false

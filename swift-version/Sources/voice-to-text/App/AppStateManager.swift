@@ -43,6 +43,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         if #available(macOS 15.1, *) {
             let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
             if selectedPostModel == "apple-native" {
+                Logger.shared.info("AppStateManager: Initializing AppleIntelligenceEngine for post-processing")
                 self.postProcessingEngine = AppleIntelligenceEngine()
             }
         }
@@ -101,8 +102,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                         text = refinedText
                         Logger.shared.info("AppStateManager: Post processing completed successfully: '\(text)'")
                     } catch {
-                        Logger.shared.info("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
-                        print("Post processing failed: \(error.localizedDescription)")
+                        Logger.shared.error("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
                     }
                 }
                 
@@ -117,8 +117,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                     self.setIdle() // Orchestrator handles reset
                 }
             } catch {
-                Logger.shared.info("AppStateManager: Transcription failed: \(error.localizedDescription)")
-                print("Transcription failed: \(error.localizedDescription)")
+                Logger.shared.error("AppStateManager: Transcription failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.setIdle()
                 }
@@ -129,18 +128,20 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     public func switchTranscriptionEngine(toModel modelName: String) async {
         guard let router = engineRouter else { return }
         
+        Logger.shared.info("AppStateManager: Requested to switch transcription engine to model: '\(modelName)'")
+        
         if modelName == "apple-native" {
             if #available(macOS 15.0, *) {
-                print("AppStateManager dynamically routing to NativeSpeechEngine for model: apple-native")
+                Logger.shared.info("AppStateManager: Dynamically routing to NativeSpeechEngine for model: apple-native")
                 let native = NativeSpeechEngine()
                 await router.setEngine(native)
             } else {
                 // Fallback if somehow triggered on old macOS
-                print("macOS too old for apple-native. Falling back to WhisperKit.")
+                Logger.shared.error("AppStateManager: macOS too old for apple-native. Falling back to WhisperKit.")
                 if let whisper = sharedWhisper { await router.setEngine(whisper) }
             }
         } else {
-            print("AppStateManager dynamically routing to shared WhisperService for model: \(modelName)")
+            Logger.shared.info("AppStateManager: Dynamically routing to shared WhisperService for model: \(modelName)")
             if let whisper = sharedWhisper {
                 await router.setEngine(whisper)
             }

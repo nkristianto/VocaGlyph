@@ -12,7 +12,9 @@ public actor NativeSpeechEngine: TranscriptionEngine {
     private var analyzer: Any?
     private var transcriber: Any?
     
-    public init() {}
+    public init() {
+        Logger.shared.info("NativeSpeechEngine: Initialized Apple Dictation Engine")
+    }
     
     public func transcribe(audioBuffer: AVAudioPCMBuffer) async throws -> String {
         Logger.shared.info("NativeSpeechEngine: Starting transcription for \(audioBuffer.frameLength) frames")
