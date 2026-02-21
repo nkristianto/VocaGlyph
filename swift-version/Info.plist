@@ -18,5 +18,7 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VocaGlyph uses the microphone to transcribe your speech into text.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VocaGlyph requires Speech Recognition to transcribe your voice natively using Apple Intelligence.</string>
 </dict>
 </plist>

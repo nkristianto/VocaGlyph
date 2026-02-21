@@ -4,11 +4,12 @@ import ServiceManagement
 enum SettingsTab: Hashable {
     case general
     case model
+    case postProcessing
 }
 
 struct SettingsView: View {
     @ObservedObject var whisper: WhisperService
-    let stateManager: AppStateManager
+    @ObservedObject var stateManager: AppStateManager
     
     @State private var selectedTab: SettingsTab? = .general
     
@@ -28,9 +29,11 @@ struct SettingsView: View {
                 
                 switch selectedTab {
                 case .general:
-                    GeneralSettingsView(whisper: whisper)
+                    GeneralSettingsView(whisper: whisper, stateManager: stateManager)
                 case .model:
-                    ModelSettingsView(whisper: whisper)
+                    ModelSettingsView(whisper: whisper, stateManager: stateManager)
+                case .postProcessing:
+                    PostProcessingSettingsView(whisper: whisper, stateManager: stateManager)
                 case .none:
                     Text("Select an item").foregroundStyle(Theme.textMuted)
                 }
@@ -83,6 +86,7 @@ struct CustomSidebar: View {
             VStack(spacing: 4) {
                 SidebarItemView(title: "General", icon: "gearshape.fill", tab: .general, selectedTab: $selectedTab)
                 SidebarItemView(title: "Model", icon: "brain.head.profile", tab: .model, selectedTab: $selectedTab)
+                SidebarItemView(title: "Post-Processing", icon: "wand.and.stars", tab: .postProcessing, selectedTab: $selectedTab)
             }
             .padding(.horizontal, 6) // Container padding 6 + Inner 10 = 16pt icon alignment
             
@@ -146,12 +150,13 @@ struct SidebarItemView: View {
 
 struct GeneralSettingsView: View {
     @ObservedObject var whisper: WhisperService
+    @ObservedObject var stateManager: AppStateManager
     
     @AppStorage("globalShortcutPreset") private var globalShortcutPreset: String = GlobalShortcutOption.ctrlShiftC.rawValue
     @AppStorage("dictationLanguage") private var dictationLanguage: String = "English (US)"
     @AppStorage("autoPunctuation") private var autoPunctuation: Bool = true
     @AppStorage("removeFillerWords") private var removeFillerWords: Bool = false
-    @AppStorage("selectedModel") private var selectedModel: String = "tiny"
+    @AppStorage("selectedModel") private var selectedModel: String = "apple-native"
     
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     
@@ -238,6 +243,8 @@ struct GeneralSettingsView: View {
                         .padding(16)
                         
                         Divider().background(Theme.textMuted.opacity(0.1))
+                        
+
                         
                         // Dictation Language
                         HStack {
@@ -364,6 +371,7 @@ struct GeneralSettingsView: View {
                             .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
                     )
                 }
+                
             }
             .padding(40)
             .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
@@ -371,9 +379,170 @@ struct GeneralSettingsView: View {
     }
 }
 
+struct PostProcessingSettingsView: View {
+    @ObservedObject var whisper: WhisperService
+    @ObservedObject var stateManager: AppStateManager
+    
+    @AppStorage("enablePostProcessing") private var enablePostProcessing: Bool = false
+    @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
+    @AppStorage("postProcessingPrompt") private var postProcessingPrompt: String = "Fix grammar and formatting. Return only the revised text."
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            // Header
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Post-Processing Settings")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.navy)
+                Text("Configure AI refinement for your dictation")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .padding(.bottom, 8)
+            
+            // AI Post-Processing Section
+            VStack(alignment: .leading, spacing: 16) {
+                Label {
+                    Text("AI Post-Processing")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                } icon: {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundStyle(Theme.navy)
+                }
+                
+                VStack(spacing: 0) {
+                    // Enable Post-Processing
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Automated Text Refinement")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.navy)
+                            Text("Use an AI engine to fix grammar and rephrase text before pasting")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $enablePostProcessing)
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                    }
+                    .padding(16)
+                    
+                    if enablePostProcessing {
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Model Selection
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AI Processing Model")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Select the AI to refine your text")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Menu {
+                                Button("Apple Intelligence") { selectedTaskModel = "apple-native" }
+                                // Future Dropdown items can go here
+                            } label: {
+                                HStack {
+                                    let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : selectedTaskModel
+                                    Text(display)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.navy)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.background)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 160)
+                        }
+                        .padding(16)
+                        
+                        if #available(macOS 15.1, *) {} else {
+                            if selectedTaskModel == "apple-native" {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.orange)
+                                    Text("Requires macOS 15.1+. App will fallback to raw text.")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(Theme.textMuted)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 8)
+                            }
+                        }
+                        
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Custom Prompt
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Custom Instructions (Prompt)")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.navy)
+                            Text("Define exactly how the AI should modify your transcribed text.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                            
+                            if #available(macOS 14.0, *) {
+                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt, axis: .vertical)
+                                    .lineLimit(2...4)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.navy)
+                                    .padding(10)
+                                    .background(Theme.background)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                            } else {
+                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.navy)
+                                    .padding(10)
+                                    .background(Theme.background)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                            }
+                        }
+                        .padding(16)
+                        .background(Color.white) // Distinguish child area slightly if needed
+                    }
+                }
+                .background(Color.white)
+                .clipShape(.rect(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                )
+            }
+            
+            Spacer()
+        }
+        .padding(40)
+        .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
+    }
+}
+
 struct ModelSettingsView: View {
     @ObservedObject var whisper: WhisperService
-    @AppStorage("selectedModel") private var selectedModel: String = "tiny"
+    @ObservedObject var stateManager: AppStateManager
+    @AppStorage("selectedModel") private var selectedModel: String = "apple-native"
+    @State private var focusedModel: String = "apple-native"
     
     var body: some View {
         VStack(alignment: .leading, spacing: 32) {
@@ -403,20 +572,49 @@ struct ModelSettingsView: View {
                     
                     ScrollView {
                         VStack(spacing: 12) {
+                            
+                        if #available(macOS 15.0, *) {
+                            ModelCardView(
+                                title: "Apple Intelligence Native (System)",
+                                description: "Apple's built-in neural dictation. Requires macOS 15.0+ and runs completely on-device. No download required.",
+                                size: "0 MB",
+                                isSelected: focusedModel == "apple-native",
+                                isDownloaded: true,
+                                isActive: selectedModel == "apple-native", // Since it doesn't need "loading", active == selected
+                                isLoading: false,
+                                downloadProgress: nil,
+                                onSelect: {
+                                    focusedModel = "apple-native"
+                                },
+                                onUse: {
+                                    selectedModel = "apple-native"
+                                    Task {
+                                        await stateManager.switchTranscriptionEngine(toModel: "apple-native")
+                                    }
+                                },
+                                onDownload: {},
+                                onDelete: nil
+                            )
+                        }
+                            
                         ModelCardView(
                             title: "Tiny (Recommended)",
-                            description: "Fastest inference. Suitable for quick commands, basic punctuation, and short sentences.",
+                            description: "Fastest inference for Whisper. Suitable for quick commands, basic punctuation, and short sentences.",
                             size: "75 MB",
-                            isSelected: selectedModel == "tiny",
+                            isSelected: focusedModel == "tiny",
                             isDownloaded: whisper.downloadedModels.contains("tiny"),
-                            isActive: whisper.activeModel == "tiny",
+                            isActive: selectedModel == "tiny" && whisper.activeModel == "tiny",
                             isLoading: whisper.loadingModel == "tiny",
                             downloadProgress: whisper.downloadProgresses["tiny"],
                             onSelect: {
-                                selectedModel = "tiny"
+                                focusedModel = "tiny"
                             },
                             onUse: {
+                                selectedModel = "tiny"
                                 whisper.changeModel(to: "tiny")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "tiny")
+                                }
                             },
                             onDownload: {
                                 whisper.downloadModel("tiny")
@@ -430,16 +628,20 @@ struct ModelSettingsView: View {
                             title: "Base",
                             description: "Balanced performance. Good trade-off between speed and accuracy for longer dictation.",
                             size: "140 MB",
-                            isSelected: selectedModel == "base",
+                            isSelected: focusedModel == "base",
                             isDownloaded: whisper.downloadedModels.contains("base"),
-                            isActive: whisper.activeModel == "base",
+                            isActive: selectedModel == "base" && whisper.activeModel == "base",
                             isLoading: whisper.loadingModel == "base",
                             downloadProgress: whisper.downloadProgresses["base"],
                             onSelect: {
-                                selectedModel = "base"
+                                focusedModel = "base"
                             },
                             onUse: {
+                                selectedModel = "base"
                                 whisper.changeModel(to: "base")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "base")
+                                }
                             },
                             onDownload: {
                                 whisper.downloadModel("base")
@@ -453,16 +655,20 @@ struct ModelSettingsView: View {
                             title: "Base (English Only)",
                             description: "Optimized for English. Slightly better accuracy and speed than standard Base.",
                             size: "140 MB",
-                            isSelected: selectedModel == "base.en",
+                            isSelected: focusedModel == "base.en",
                             isDownloaded: whisper.downloadedModels.contains("base.en"),
-                            isActive: whisper.activeModel == "base.en",
+                            isActive: selectedModel == "base.en" && whisper.activeModel == "base.en",
                             isLoading: whisper.loadingModel == "base.en",
                             downloadProgress: whisper.downloadProgresses["base.en"],
                             onSelect: {
-                                selectedModel = "base.en"
+                                focusedModel = "base.en"
                             },
                             onUse: {
+                                selectedModel = "base.en"
                                 whisper.changeModel(to: "base.en")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "base.en")
+                                }
                             },
                             onDownload: {
                                 whisper.downloadModel("base.en")
@@ -476,16 +682,20 @@ struct ModelSettingsView: View {
                             title: "Small",
                             description: "Higher accuracy with acceptable speeds on modern Mac hardware.",
                             size: "240 MB",
-                            isSelected: selectedModel == "small",
+                            isSelected: focusedModel == "small",
                             isDownloaded: whisper.downloadedModels.contains("small"),
-                            isActive: whisper.activeModel == "small",
+                            isActive: selectedModel == "small" && whisper.activeModel == "small",
                             isLoading: whisper.loadingModel == "small",
                             downloadProgress: whisper.downloadProgresses["small"],
                             onSelect: {
-                                selectedModel = "small"
+                                focusedModel = "small"
                             },
                             onUse: {
+                                selectedModel = "small"
                                 whisper.changeModel(to: "small")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "small")
+                                }
                             },
                             onDownload: {
                                 whisper.downloadModel("small")
@@ -499,16 +709,20 @@ struct ModelSettingsView: View {
                             title: "Distil Large v3",
                             description: "Maximum accuracy. Heavy memory footprint and slower inference, recommended for Apple Silicon.",
                             size: "1.5 GB",
-                            isSelected: selectedModel == "distil-large-v3",
+                            isSelected: focusedModel == "distil-large-v3",
                             isDownloaded: whisper.downloadedModels.contains("distil-large-v3"),
-                            isActive: whisper.activeModel == "distil-large-v3",
+                            isActive: selectedModel == "distil-large-v3" && whisper.activeModel == "distil-large-v3",
                             isLoading: whisper.loadingModel == "distil-large-v3",
                             downloadProgress: whisper.downloadProgresses["distil-large-v3"],
                             onSelect: {
-                                selectedModel = "distil-large-v3"
+                                focusedModel = "distil-large-v3"
                             },
                             onUse: {
+                                selectedModel = "distil-large-v3"
                                 whisper.changeModel(to: "distil-large-v3")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "distil-large-v3")
+                                }
                             },
                             onDownload: {
                                 whisper.downloadModel("distil-large-v3")
@@ -519,6 +733,9 @@ struct ModelSettingsView: View {
                         )
                     }
                     .padding(.trailing, 8) // Scrollbar clearance
+                    .onAppear {
+                        focusedModel = selectedModel
+                    }
                 }
                 
 
@@ -541,7 +758,7 @@ struct ModelCardView: View {
     let onSelect: () -> Void
     let onUse: () -> Void
     let onDownload: () -> Void
-    let onDelete: () -> Void
+    let onDelete: (() -> Void)?
     
     @State private var showDeleteConfirmation = false
     
@@ -653,20 +870,32 @@ struct ModelCardView: View {
                             .background((isLoading ? Theme.textMuted : Theme.navy).opacity(0.1))
                             .clipShape(.rect(cornerRadius: 6))
                             
-                            Button(action: { showDeleteConfirmation = true }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "trash")
-                                    Text("Delete")
+                            if let deleteAction = onDelete {
+                                Button(action: { showDeleteConfirmation = true }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "trash")
+                                        Text("Delete")
+                                    }
+                                    .font(.system(size: 11, weight: .bold))
                                 }
-                                .font(.system(size: 11, weight: .bold))
+                                .buttonStyle(.plain)
+                                .disabled(isLoading)
+                                .foregroundStyle(.red)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                .background(Color.red.opacity(0.1))
+                                .clipShape(.rect(cornerRadius: 6))
+                                .alert(isPresented: $showDeleteConfirmation) {
+                                    Alert(
+                                        title: Text("Delete \(title)?"),
+                                        message: Text("Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription."),
+                                        primaryButton: .destructive(Text("Delete")) {
+                                            deleteAction()
+                                        },
+                                        secondaryButton: .cancel()
+                                    )
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isLoading)
-                            .foregroundStyle(.red)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            .background(Color.red.opacity(0.1))
-                            .clipShape(.rect(cornerRadius: 6))
                         }
                     }
                 }
@@ -683,16 +912,6 @@ struct ModelCardView: View {
         .contentShape(Rectangle()) // Makes the whole card area tappable
         .onTapGesture {
             onSelect()
-        }
-        .alert(isPresented: $showDeleteConfirmation) {
-            Alert(
-                title: Text("Delete \(title)?"),
-                message: Text("Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription."),
-                primaryButton: .destructive(Text("Delete")) {
-                    onDelete()
-                },
-                secondaryButton: .cancel()
-            )
         }
     }
 }

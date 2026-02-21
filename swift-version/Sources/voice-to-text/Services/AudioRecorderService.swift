@@ -121,11 +121,32 @@ class AudioRecorderService {
         }
     }
     
-    func stopRecording() -> [Float] {
+    func stopRecording() -> AVAudioPCMBuffer? {
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         
         print("Stopped recording. Captured \(recordedData.count) frames at 16kHz.")
-        return recordedData
+        
+        guard !recordedData.isEmpty else { return nil }
+        
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetSampleRate,
+            channels: 1,
+            interleaved: false
+        ) else { return nil }
+        
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(recordedData.count)) else {
+            return nil
+        }
+        
+        buffer.frameLength = buffer.frameCapacity
+        if let floatChannelData = buffer.floatChannelData {
+            for i in 0..<recordedData.count {
+                floatChannelData[0][i] = recordedData[i]
+            }
+        }
+        
+        return buffer
     }
 }

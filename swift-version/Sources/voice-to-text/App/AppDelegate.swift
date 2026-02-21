@@ -21,9 +21,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder = AudioRecorderService()
         whisper = WhisperService()
         whisper.delegate = self
+        stateManager.sharedWhisper = whisper // Let AppStateManager reuse this single instance
+        stateManager.engineRouter = EngineRouter(engine: whisper) // initial default
+        stateManager.startEngine() // Boot up whatever model is selected in UserDefaults
         output = OutputService()
         hotkeyService = HotkeyService(stateManager: stateManager) { [weak self] in
-            return self?.whisper.isReady ?? false
+            // Allow recording if App is idle. This covers both WhisperKit (ready) and Apple Native.
+            return self?.stateManager.currentState == .idle
         }
         hotkeyService.start()
         
@@ -137,15 +141,25 @@ extension AppDelegate: AppStateManagerDelegate {
             button?.image = img?.withSymbolConfiguration(config)
             
             // Stop capturing audio
-            let floatArray = audioRecorder.stopRecording()
-            print("Finished capturing audio segment. Float array size: \(floatArray.count)")
-            
-            // Send the float array straight to WhisperKit's neural engine processing!
-            whisper.transcribe(audioArray: floatArray)
+            if let buffer = audioRecorder.stopRecording() {
+                print("Finished capturing audio segment.")
+                stateManager.processAudio(buffer: buffer)
+            } else {
+                stateManager.setIdle()
+            }
         }
         
         // Update overlay panel
         OverlayPanelManager.shared.updateVisibility(for: newState)
+    }
+
+    func appStateManagerDidTranscribe(text: String) {
+        // The transcription has successfully completed.
+        print("Final transcription output bound in AppDelegate: \(text)")
+        
+        DispatchQueue.main.async {
+            self.output.handleTranscriptionValue(text)
+        }
     }
 }
 
@@ -171,16 +185,6 @@ extension AppDelegate: WhisperServiceDelegate {
                     }
                 }
             }
-        }
-    }
-    
-    func whisperServiceDidTranscribe(_ text: String) {
-        // The transcription has successfully completed.
-        print("Final transcription output bound in AppDelegate: \(text)")
-        
-        DispatchQueue.main.async {
-            self.stateManager.setIdle()
-            self.output.handleTranscriptionValue(text)
         }
     }
 }

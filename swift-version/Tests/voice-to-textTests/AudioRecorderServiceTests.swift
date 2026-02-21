@@ -12,10 +12,10 @@ final class AudioRecorderServiceTests: XCTestCase {
         XCTAssertNotNil(service)
     }
     
-    func testStopRecordingReturnsEmptyArrayWhenNoAudioSent() {
+    func testStopRecordingReturnsNilWhenNoAudioSent() {
         let service = AudioRecorderService()
-        // Without explicitly calling start() to tap the real mic, stop should cleanly return the empty backing array.
+        // Without explicitly calling start() to tap the real mic, stop should cleanly return nil.
         let output = service.stopRecording()
-        XCTAssertTrue(output.isEmpty)
+        XCTAssertNil(output)
     }
 }

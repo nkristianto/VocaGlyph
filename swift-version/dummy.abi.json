@@ -1,0 +1,18 @@
+{
+  "ABIRoot": {
+    "kind": "Root",
+    "name": "dummy",
+    "printedName": "dummy",
+    "children": [
+      {
+        "kind": "Import",
+        "name": "Speech",
+        "printedName": "Speech",
+        "declKind": "Import",
+        "moduleName": "dummy"
+      }
+    ],
+    "json_format_version": 8
+  },
+  "ConstValues": []
+}

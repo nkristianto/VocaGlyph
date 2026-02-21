@@ -1,9 +1,9 @@
 import Foundation
 import WhisperKit
+import AVFoundation
 
 protocol WhisperServiceDelegate: AnyObject {
     func whisperServiceDidUpdateState(_ state: String)
-    func whisperServiceDidTranscribe(_ text: String)
 }
 
 class WhisperService: ObservableObject, @unchecked Sendable {
@@ -93,6 +93,14 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     }
     
     private func autoInitialize() async {
+        if defaultModelName == "apple-native" {
+            DispatchQueue.main.async {
+                self.downloadState = "Using Apple Native"
+                self.isReady = false
+            }
+            return
+        }
+        
         let available = getDownloadedModelsSync()
         if available.contains(defaultModelName) {
             await initializeWhisper(modelName: defaultModelName)
@@ -236,42 +244,46 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         }
     }
     
-    func transcribe(audioArray: [Float]) {
+}
+
+// MARK: - TranscriptionEngine Protocol
+extension WhisperService: TranscriptionEngine {
+    func transcribe(audioBuffer: AVAudioPCMBuffer) async throws -> String {
         guard isReady, let whisperKit = whisperKit else {
             print("[\(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))] WhisperKit is not ready yet.")
             DispatchQueue.main.async {
                 self.delegate?.whisperServiceDidUpdateState("Model warming up...")
             }
-            return
+            throw NSError(domain: "WhisperError", code: 1, userInfo: [NSLocalizedDescriptionKey: "WhisperKit is not ready yet."])
         }
         
-        Task {
-            do {
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "HH:mm:ss.SSS"
-                
-                print("[\(dateFormatter.string(from: Date()))] Starting WhisperKit transcription on \(audioArray.count) frames...")
-                print("[\(dateFormatter.string(from: Date()))] Transcribing \(audioArray.count) samples using language code: \(dictationLanguageCode)")
-        
-                // Prepare decoding options dynamically
-                let decodingOptions = DecodingOptions(
-                    language: dictationLanguageCode,
-                    usePrefillPrompt: false,
-                    usePrefillCache: true,
-                    skipSpecialTokens: true,
-                    withoutTimestamps: true
-                )
-                
-                let results = try await whisperKit.transcribe(audioArray: audioArray, decodeOptions: decodingOptions)
-                let combinedText = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-                print("[\(dateFormatter.string(from: Date()))] Transcription finished: '\(combinedText)'")
-                
-                DispatchQueue.main.async {
-                    self.delegate?.whisperServiceDidTranscribe(combinedText)
-                }
-            } catch {
-                print("Transcription error: \(error.localizedDescription)")
-            }
+        guard let floatChannelData = audioBuffer.floatChannelData else {
+            throw NSError(domain: "WhisperError", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid audio buffer"])
         }
+        
+        let frameLength = Int(audioBuffer.frameLength)
+        let channelData = UnsafeBufferPointer<Float>(start: floatChannelData[0], count: frameLength)
+        let audioArray = Array(channelData)
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "HH:mm:ss.SSS"
+        
+        print("[\(dateFormatter.string(from: Date()))] Starting WhisperKit transcription on \(audioArray.count) frames...")
+        print("[\(dateFormatter.string(from: Date()))] Transcribing \(audioArray.count) samples using language code: \(dictationLanguageCode)")
+
+        // Prepare decoding options dynamically
+        let decodingOptions = DecodingOptions(
+            language: dictationLanguageCode,
+            usePrefillPrompt: false,
+            usePrefillCache: true,
+            skipSpecialTokens: true,
+            withoutTimestamps: true
+        )
+        
+        let results = try await whisperKit.transcribe(audioArray: audioArray, decodeOptions: decodingOptions)
+        let combinedText = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        print("[\(dateFormatter.string(from: Date()))] Transcription finished: '\(combinedText)'")
+        
+        return combinedText
     }
 }

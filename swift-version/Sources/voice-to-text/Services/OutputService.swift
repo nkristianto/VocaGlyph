@@ -2,13 +2,34 @@ import Cocoa
 import ApplicationServices
 import CoreGraphics
 
+func osDevLog(_ message: String) {
+    let url = URL(fileURLWithPath: "/tmp/vocaglyph_debug.log")
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm:ss.SSS"
+    let time = formatter.string(from: Date())
+    let line = "[\(time)] OutputService: \(message)\n"
+    if let handle = try? FileHandle(forWritingTo: url) {
+        handle.seekToEndOfFile()
+        if let data = line.data(using: .utf8) { handle.write(data) }
+        handle.closeFile()
+    } else {
+        try? line.data(using: .utf8)?.write(to: url)
+    }
+}
+
 class OutputService: @unchecked Sendable {
     
     /// Main entry point for outputting the transcribed text.
     func handleTranscriptionValue(_ text: String) {
-        guard !text.isEmpty else { return }
+        osDevLog("handleTranscriptionValue called! Input string length: \(text.count), text: '\(text)'")
+        
+        guard !text.isEmpty else {
+            osDevLog("String is empty, returning early.")
+            return
+        }
         
         var processedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        osDevLog("After trimming: '\(processedText)'")
         
         let shouldRemoveFillers = UserDefaults.standard.bool(forKey: "removeFillerWords")
         if shouldRemoveFillers {
@@ -40,7 +61,13 @@ class OutputService: @unchecked Sendable {
         
         // 3. Attempt to actively paste the text using CGEvent (Cmd+V) if we have accessibility trust
         if AXIsProcessTrusted() {
-            simulatePasteKeystroke()
+            // Add a tiny delay to ensure the user has fully released the hotkeys
+            // and the system pasteboard has synchronized across applications.
+            // Because Apple Native dictation is nearly instant, it can fire Cmd+V
+            // before the modifier keys from the hotkey trigger are released.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.simulatePasteKeystroke()
+            }
         } else {
             Logger.shared.error("AXIsProcessTrusted() returned false. Falling back to clipboard only.")
         }

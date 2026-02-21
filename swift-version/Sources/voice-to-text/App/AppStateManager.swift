@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AVFoundation
 
 enum AppState {
     case idle
@@ -10,14 +11,40 @@ enum AppState {
 
 protocol AppStateManagerDelegate: AnyObject {
     func appStateDidChange(newState: AppState)
+    func appStateManagerDidTranscribe(text: String)
 }
 
 class AppStateManager: ObservableObject, @unchecked Sendable {
     weak var delegate: AppStateManagerDelegate?
+    var engineRouter: EngineRouter?
+    var sharedWhisper: WhisperService?
+    var postProcessingEngine: (any PostProcessingEngine)?
+    
+    // We no longer track selectedEngine explicitly. We derive the engine 
+    // from the model selection inside switchTranscriptionEngine.
     
     @Published var currentState: AppState = .idle {
         didSet {
             delegate?.appStateDidChange(newState: currentState)
+        }
+    }
+    
+    init() {}
+    
+    // Called by AppDelegate after all dependencies are injected
+    func startEngine() {
+        let initialModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
+        devLog("AppStateManager: startEngine called with model: \(initialModel)")
+        Task {
+            await switchTranscriptionEngine(toModel: initialModel)
+        }
+        
+        // Initialize Post-Processing Engine if Apple Intelligence is enabled/selected
+        if #available(macOS 15.1, *) {
+            let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
+            if selectedPostModel == "apple-native" {
+                self.postProcessingEngine = AppleIntelligenceEngine()
+            }
         }
     }
     
@@ -35,5 +62,88 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     
     func setInitializing() {
         currentState = .initializing
+    }
+    
+    func processAudio(buffer: AVAudioPCMBuffer) {
+        devLog("AppStateManager: processAudio called with buffer size: \(buffer.frameLength)")
+        guard let router = engineRouter else {
+            devLog("AppStateManager: engineRouter is nil. Aborting.")
+            setIdle()
+            return
+        }
+        
+        let shouldPostProcess = UserDefaults.standard.bool(forKey: "enablePostProcessing")
+        let postProcessPrompt = UserDefaults.standard.string(forKey: "postProcessingPrompt") ?? ""
+        
+        Task {
+            do {
+                var text = try await router.transcribe(audioBuffer: buffer)
+                devLog("AppStateManager: Router transcribed text successfully: '\(text)'")
+                
+                if shouldPostProcess, let postProcessor = self.postProcessingEngine {
+                    devLog("AppStateManager: Post processing enabled, refining text...")
+                    do {
+                        let originalText = text
+                        let refinedText = try await withThrowingTaskGroup(of: String.self) { group in
+                            group.addTask {
+                                return try await postProcessor.refine(text: originalText, prompt: postProcessPrompt)
+                            }
+                            group.addTask {
+                                try await Task.sleep(nanoseconds: 2_000_000_000)
+                                throw NSError(domain: "TimeoutError", code: 408, userInfo: [NSLocalizedDescriptionKey: "Post-processing timed out after 2000ms"])
+                            }
+                            guard let result = try await group.next() else {
+                                throw CancellationError()
+                            }
+                            group.cancelAll()
+                            return result
+                        }
+                        text = refinedText
+                        devLog("AppStateManager: Post processing completed successfully: '\(text)'")
+                    } catch {
+                        devLog("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
+                        print("Post processing failed: \(error.localizedDescription)")
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    devLog("AppStateManager: Dispatching back to main UI thread...")
+                    if let del = self.delegate {
+                        devLog("AppStateManager: Delegate exists, calling appStateManagerDidTranscribe()")
+                        del.appStateManagerDidTranscribe(text: text)
+                    } else {
+                        devLog("AppStateManager: ERROR! Delegate is unexpectedly nil!")
+                    }
+                    self.setIdle() // Orchestrator handles reset
+                }
+            } catch {
+                devLog("AppStateManager: Transcription failed: \(error.localizedDescription)")
+                print("Transcription failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.setIdle()
+                }
+            }
+        }
+    }
+    
+    public func switchTranscriptionEngine(toModel modelName: String) async {
+        guard let router = engineRouter else { return }
+        
+        if modelName == "apple-native" {
+            if #available(macOS 15.0, *) {
+                print("AppStateManager dynamically routing to NativeSpeechEngine for model: apple-native")
+                let native = NativeSpeechEngine()
+                await router.setEngine(native)
+            } else {
+                // Fallback if somehow triggered on old macOS
+                print("macOS too old for apple-native. Falling back to WhisperKit.")
+                if let whisper = sharedWhisper { await router.setEngine(whisper) }
+            }
+        } else {
+            print("AppStateManager dynamically routing to shared WhisperService for model: \(modelName)")
+            if let whisper = sharedWhisper {
+                await router.setEngine(whisper)
+            }
+        }
     }
 }
