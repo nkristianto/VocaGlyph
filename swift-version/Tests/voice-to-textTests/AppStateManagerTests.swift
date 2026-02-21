@@ -161,8 +161,8 @@ final class AppStateManagerTests: XCTestCase {
         
         manager.processAudio(buffer: buffer)
         
-        // Give async processing time to complete (timeout is 2s, wait a bit longer)
-        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        // Give async processing time to complete (timeout is 10s, wait a bit longer)
+        try? await Task.sleep(nanoseconds: 10_500_000_000)
         
         // Verify we still called refine, but gracefully degraded to the raw text
         XCTAssertEqual(mockPostProcessor.didCallRefineWithText, "Raw text")
@@ -182,8 +182,8 @@ class MockPostProcessingEngine: PostProcessingEngine, @unchecked Sendable {
         didCallRefineWithPrompt = prompt
         
         if shouldTimeout {
-            // Sleep for 3 seconds to trigger the 2000ms timeout
-            try await Task.sleep(nanoseconds: 3_000_000_000)
+            // Sleep for 12 seconds to trigger the 10000ms timeout
+            try await Task.sleep(nanoseconds: 12_000_000_000)
         }
         
         if shouldThrowError {

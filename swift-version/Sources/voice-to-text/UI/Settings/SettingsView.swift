@@ -558,11 +558,17 @@ struct PostProcessingSettingsView: View {
                             Button("Apple Intelligence") { 
                                 Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'apple-native'")
                                 selectedTaskModel = "apple-native" 
+                                stateManager.switchPostProcessingEngine()
+                            }
+                            Button("Cloud API (Gemini/Anthropic)") { 
+                                Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'cloud-api'")
+                                selectedTaskModel = "cloud-api" 
+                                stateManager.switchPostProcessingEngine()
                             }
                             // Future Dropdown items can go here
                         } label: {
                             HStack {
-                                let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : selectedTaskModel
+                                let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : (selectedTaskModel == "cloud-api" ? "Cloud API (Gemini/Anthropic)" : selectedTaskModel)
                                 Text(display)
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.navy)
@@ -588,18 +594,20 @@ struct PostProcessingSettingsView: View {
                     
                     appleNativeCheck
                     
+                    if selectedTaskModel == "cloud-api" {
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Error Message Display
+                        errorDisplaySection
+                        
+                        // External API Credentials Group
+                        externalApiCredentialsSection
+                    }
+                    
                     Divider().background(Theme.textMuted.opacity(0.1))
                     
                     // Custom Prompt
                     customPromptSection
-                    
-                    Divider().background(Theme.textMuted.opacity(0.1))
-                    
-                    // Error Message Display
-                    errorDisplaySection
-                    
-                    // External API Credentials Group
-                    externalApiCredentialsSection
                 }
             }
             .background(Color.white)
@@ -629,14 +637,19 @@ struct PostProcessingSettingsView: View {
                 
                 HStack(spacing: 8) {
                     SecureField(viewModel.isAnthropicKeySaved ? "sk-ant-... (Saved in Keychain)" : "sk-ant-...", text: $viewModel.anthropicApiKey)
-                        .textFieldStyle(.plain)
+                        .textFieldStyle(.roundedBorder)
                         .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(Theme.navy)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Theme.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    
+                    Button(action: {
+                        if let clipboardStr = NSPasteboard.general.string(forType: .string) {
+                            viewModel.anthropicApiKey = clipboardStr
+                        }
+                    }) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Paste from clipboard")
                     
                     if viewModel.isAnthropicKeySaved {
                         Button(action: {
@@ -673,14 +686,19 @@ struct PostProcessingSettingsView: View {
                 
                 HStack(spacing: 8) {
                     SecureField(viewModel.isGeminiKeySaved ? "AIzaSy... (Saved in Keychain)" : "AIzaSy...", text: $viewModel.geminiApiKey)
-                        .textFieldStyle(.plain)
+                        .textFieldStyle(.roundedBorder)
                         .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(Theme.navy)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Theme.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    
+                    Button(action: {
+                        if let clipboardStr = NSPasteboard.general.string(forType: .string) {
+                            viewModel.geminiApiKey = clipboardStr
+                        }
+                    }) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Paste from clipboard")
                     
                     if viewModel.isGeminiKeySaved {
                         Button(action: {

@@ -31,7 +31,6 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     
     init() {}
     
-    // Called by AppDelegate after all dependencies are injected
     func startEngine() {
         let initialModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
         Logger.shared.info("AppStateManager: startEngine called with model: \(initialModel)")
@@ -39,13 +38,24 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             await switchTranscriptionEngine(toModel: initialModel)
         }
         
-        // Initialize Post-Processing Engine if Apple Intelligence is enabled/selected
-        if #available(macOS 15.1, *) {
-            let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
-            if selectedPostModel == "apple-native" {
-                Logger.shared.info("AppStateManager: Initializing AppleIntelligenceEngine for post-processing")
+        switchPostProcessingEngine()
+    }
+    
+    public func switchPostProcessingEngine() {
+        let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
+        Logger.shared.info("AppStateManager: Switching post-processing engine to: \(selectedPostModel)")
+        
+        if selectedPostModel == "cloud-api" {
+            self.postProcessingEngine = GeminiEngine()
+        } else if selectedPostModel == "apple-native" {
+            if #available(macOS 15.1, *) {
                 self.postProcessingEngine = AppleIntelligenceEngine()
+            } else {
+                Logger.shared.info("AppStateManager: Apple Intelligence selected but requires macOS 15.1+")
+                self.postProcessingEngine = nil
             }
+        } else {
+            self.postProcessingEngine = nil
         }
     }
     
@@ -90,8 +100,8 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                                 return try await postProcessor.refine(text: originalText, prompt: postProcessPrompt)
                             }
                             group.addTask {
-                                try await Task.sleep(nanoseconds: 2_000_000_000)
-                                throw NSError(domain: "TimeoutError", code: 408, userInfo: [NSLocalizedDescriptionKey: "Post-processing timed out after 2000ms"])
+                                try await Task.sleep(nanoseconds: 10_000_000_000)
+                                throw NSError(domain: "TimeoutError", code: 408, userInfo: [NSLocalizedDescriptionKey: "Post-processing timed out after 10000ms"])
                             }
                             guard let result = try await group.next() else {
                                 throw CancellationError()
