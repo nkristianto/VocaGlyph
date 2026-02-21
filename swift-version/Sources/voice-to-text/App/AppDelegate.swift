@@ -11,11 +11,51 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
     var output: OutputService!
+    
+    lazy var permissionsService = PermissionsService()
+    var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Hide application from dock and cmd-tab switcher
         NSApp.setActivationPolicy(.accessory)
         
+        if permissionsService.areAllCorePermissionsGranted {
+            initializeCoreServices()
+        } else {
+            showOnboardingWindow()
+        }
+    }
+    
+    func showOnboardingWindow() {
+        let onboardingView = OnboardingView(permissionsService: permissionsService) { [weak self] in
+            DispatchQueue.main.async {
+                self?.onboardingWindow?.close()
+                self?.onboardingWindow = nil
+                self?.initializeCoreServices()
+                self?.toggleSettingsWindow(nil) // Open Settings after onboarding
+            }
+        }
+        
+        let hostingController = NSHostingController(rootView: onboardingView)
+        onboardingWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        onboardingWindow?.center()
+        onboardingWindow?.isReleasedWhenClosed = false
+        onboardingWindow?.contentViewController = hostingController
+        onboardingWindow?.title = "Welcome to VocaGlyph"
+        onboardingWindow?.titleVisibility = .hidden
+        onboardingWindow?.titlebarAppearsTransparent = true
+        onboardingWindow?.isMovableByWindowBackground = true
+        
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    func initializeCoreServices() {
         // Initialize Core Services
         stateManager.delegate = self
         audioRecorder = AudioRecorderService()

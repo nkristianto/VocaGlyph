@@ -137,10 +137,42 @@ final class AppStateManagerTests: XCTestCase {
         XCTAssertEqual(mockPostProcessor.didCallRefineWithText, "Raw text")
         XCTAssertEqual(mockDelegate.lastTranscribedText, "Raw text")
     }
+
+    func testProcessAudioWithPostProcessingTimeoutFallsBackToRawText() async {
+        let manager = AppStateManager()
+        let mockEngine = MockTranscriptionEngine()
+        mockEngine.returnedText = "Raw text"
+        let router = EngineRouter(engine: mockEngine)
+        manager.engineRouter = router
+        
+        let mockPostProcessor = MockPostProcessingEngine()
+        mockPostProcessor.shouldTimeout = true
+        manager.postProcessingEngine = mockPostProcessor
+        
+        let mockDelegate = MockAppStateManagerDelegate()
+        manager.delegate = mockDelegate
+        
+        // Simulate UserDefaults settings
+        UserDefaults.standard.set(true, forKey: "enablePostProcessing")
+        UserDefaults.standard.set("Test prompt", forKey: "postProcessingPrompt")
+        
+        let format = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024)!
+        
+        manager.processAudio(buffer: buffer)
+        
+        // Give async processing time to complete (timeout is 2s, wait a bit longer)
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        
+        // Verify we still called refine, but gracefully degraded to the raw text
+        XCTAssertEqual(mockPostProcessor.didCallRefineWithText, "Raw text")
+        XCTAssertEqual(mockDelegate.lastTranscribedText, "Raw text")
+    }
 }
 
 class MockPostProcessingEngine: PostProcessingEngine, @unchecked Sendable {
     var shouldThrowError = false
+    var shouldTimeout = false
     var returnedText = "Mocked Refined"
     var didCallRefineWithText: String?
     var didCallRefineWithPrompt: String?
@@ -148,6 +180,11 @@ class MockPostProcessingEngine: PostProcessingEngine, @unchecked Sendable {
     func refine(text: String, prompt: String) async throws -> String {
         didCallRefineWithText = text
         didCallRefineWithPrompt = prompt
+        
+        if shouldTimeout {
+            // Sleep for 3 seconds to trigger the 2000ms timeout
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+        }
         
         if shouldThrowError {
             throw NSError(domain: "MockError", code: 1, userInfo: nil)
