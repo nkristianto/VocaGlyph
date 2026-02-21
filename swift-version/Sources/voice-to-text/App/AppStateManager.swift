@@ -148,3 +148,13 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         }
     }
 }
+
+extension AppStateManager {
+    static func isMacOS15OrNewer() -> Bool {
+        if #available(macOS 15.0, *) {
+            return true
+        } else {
+            return false
+        }
+    }
+}

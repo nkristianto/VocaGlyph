@@ -23,6 +23,7 @@ enum SettingsTab: Hashable {
 struct SettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
+    @State private var settingsViewModel = SettingsViewModel()
     
     @State private var selectedTab: SettingsTab? = .general
     
@@ -46,7 +47,7 @@ struct SettingsView: View {
                 case .model:
                     ModelSettingsView(whisper: whisper, stateManager: stateManager)
                 case .postProcessing:
-                    PostProcessingSettingsView(whisper: whisper, stateManager: stateManager)
+                    PostProcessingSettingsView(whisper: whisper, stateManager: stateManager, viewModel: settingsViewModel)
                 case .none:
                     Text("Select an item").foregroundStyle(Theme.textMuted)
                 }
@@ -481,6 +482,7 @@ struct GeneralSettingsView: View {
 struct PostProcessingSettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
+    @ObservedObject var viewModel: SettingsViewModel
     
     @AppStorage("enablePostProcessing") private var enablePostProcessing: Bool = false
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
@@ -500,143 +502,287 @@ struct PostProcessingSettingsView: View {
             .padding(.bottom, 8)
             
             // AI Post-Processing Section
-            VStack(alignment: .leading, spacing: 16) {
-                Label {
-                    Text("AI Post-Processing")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Theme.navy)
-                } icon: {
-                    Image(systemName: "wand.and.stars")
-                        .foregroundStyle(Theme.navy)
-                }
-                
-                VStack(spacing: 0) {
-                    // Enable Post-Processing
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Automated Text Refinement")
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Theme.navy)
-                            Text("Use an AI engine to fix grammar and rephrase text before pasting")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textMuted)
-                        }
-                        Spacer()
-                        Toggle("", isOn: $enablePostProcessing.logged(name: "Automated Text Refinement"))
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                    }
-                    .padding(16)
-                    
-                    if enablePostProcessing {
-                        Divider().background(Theme.textMuted.opacity(0.1))
-                        
-                        // Model Selection
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("AI Processing Model")
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(Theme.navy)
-                                Text("Select the AI to refine your text")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Theme.textMuted)
-                            }
-                            Spacer()
-                            Menu {
-                                Button("Apple Intelligence") { 
-                                    Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'apple-native'")
-                                    selectedTaskModel = "apple-native" 
-                                }
-                                // Future Dropdown items can go here
-                            } label: {
-                                HStack {
-                                    let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : selectedTaskModel
-                                    Text(display)
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(Theme.navy)
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(Theme.textMuted)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Theme.background)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
-                                )
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: 160)
-                        }
-                        .padding(16)
-                        
-                        if #available(macOS 15.1, *) {} else {
-                            if selectedTaskModel == "apple-native" {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.orange)
-                                    Text("Requires macOS 15.1+. App will fallback to raw text.")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(Theme.textMuted)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 8)
-                            }
-                        }
-                        
-                        Divider().background(Theme.textMuted.opacity(0.1))
-                        
-                        // Custom Prompt
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Custom Instructions (Prompt)")
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Theme.navy)
-                            Text("Define exactly how the AI should modify your transcribed text.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textMuted)
-                            
-                            if #available(macOS 14.0, *) {
-                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"), axis: .vertical)
-                                    .lineLimit(2...4)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.navy)
-                                    .padding(10)
-                                    .background(Theme.background)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
-                            } else {
-                                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"))
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(Theme.navy)
-                                    .padding(10)
-                                    .background(Theme.background)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
-                            }
-                        }
-                        .padding(16)
-                        .background(Color.white) // Distinguish child area slightly if needed
-                    }
-                }
-                .background(Color.white)
-                .clipShape(.rect(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
-                )
-            }
+            aiPostProcessingSection
             
             Spacer()
         }
         .padding(40)
         .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
+    }
+    
+    @ViewBuilder
+    private var aiPostProcessingSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label {
+                Text("AI Post-Processing")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.navy)
+            } icon: {
+                Image(systemName: "wand.and.stars")
+                    .foregroundStyle(Theme.navy)
+            }
+            
+            VStack(spacing: 0) {
+                // Enable Post-Processing
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Automated Text Refinement")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.navy)
+                        Text("Use an AI engine to fix grammar and rephrase text before pasting")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $enablePostProcessing.logged(name: "Automated Text Refinement"))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                .padding(16)
+                
+                if enablePostProcessing {
+                    Divider().background(Theme.textMuted.opacity(0.1))
+                    
+                    // Model Selection
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AI Processing Model")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Theme.navy)
+                            Text("Select the AI to refine your text")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        Spacer()
+                        Menu {
+                            Button("Apple Intelligence") { 
+                                Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'apple-native'")
+                                selectedTaskModel = "apple-native" 
+                            }
+                            // Future Dropdown items can go here
+                        } label: {
+                            HStack {
+                                let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : selectedTaskModel
+                                Text(display)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.navy)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Theme.background)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 160)
+                    }
+                    .padding(16)
+                    
+                    appleNativeCheck
+                    
+                    Divider().background(Theme.textMuted.opacity(0.1))
+                    
+                    // Custom Prompt
+                    customPromptSection
+                    
+                    Divider().background(Theme.textMuted.opacity(0.1))
+                    
+                    // Error Message Display
+                    errorDisplaySection
+                    
+                    // External API Credentials Group
+                    externalApiCredentialsSection
+                }
+            }
+            .background(Color.white)
+            .clipShape(.rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+    
+    @ViewBuilder
+    private var externalApiCredentialsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("External API Credentials")
+                .fontWeight(.semibold)
+                .foregroundStyle(Theme.navy)
+            Text("Securely save your keys in macOS Keychain. They are never stored in plaintext.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+                
+            // Anthropic Key Field
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Anthropic API Key")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.navy)
+                
+                HStack(spacing: 8) {
+                    SecureField(viewModel.isAnthropicKeySaved ? "sk-ant-... (Saved in Keychain)" : "sk-ant-...", text: $viewModel.anthropicApiKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.background)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    
+                    if viewModel.isAnthropicKeySaved {
+                        Button(action: {
+                            Task { @MainActor in await viewModel.deleteAnthropicKey() }
+                        }) {
+                            Text("Delete")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                            .help("Key is securely stored in Keychain")
+                    } else {
+                        Button(action: {
+                            Task { @MainActor in await viewModel.saveAnthropicKey() }
+                        }) {
+                            Text("Save Securely")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.anthropicApiKey.isEmpty)
+                    }
+                }
+            }
+            .padding(.top, 8)
+            
+            // Gemini Key Field
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gemini API Key")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.navy)
+                
+                HStack(spacing: 8) {
+                    SecureField(viewModel.isGeminiKeySaved ? "AIzaSy... (Saved in Keychain)" : "AIzaSy...", text: $viewModel.geminiApiKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.background)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    
+                    if viewModel.isGeminiKeySaved {
+                        Button(action: {
+                            Task { @MainActor in await viewModel.deleteGeminiKey() }
+                        }) {
+                            Text("Delete")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                            .help("Key is securely stored in Keychain")
+                    } else {
+                        Button(action: {
+                            Task { @MainActor in await viewModel.saveGeminiKey() }
+                        }) {
+                            Text("Save Securely")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.geminiApiKey.isEmpty)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding(16)
+        .background(Color.white)
+    }
+    
+    @ViewBuilder
+    private var appleNativeCheck: some View {
+        if #available(macOS 15.1, *) {} else {
+            if selectedTaskModel == "apple-native" {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Requires macOS 15.1+. App will fallback to raw text.")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var customPromptSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Custom Instructions (Prompt)")
+                .fontWeight(.semibold)
+                .foregroundStyle(Theme.navy)
+            Text("Define exactly how the AI should modify your transcribed text.")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textMuted)
+            
+            if #available(macOS 14.0, *) {
+                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"), axis: .vertical)
+                    .lineLimit(2...4)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.navy)
+                    .padding(10)
+                    .background(Theme.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    .disabled(selectedTaskModel == "apple-native" && !AppStateManager.isMacOS15OrNewer())
+            } else {
+                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.navy)
+                    .padding(10)
+                    .background(Theme.background)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    .disabled(selectedTaskModel == "apple-native" && !AppStateManager.isMacOS15OrNewer())
+            }
+        }
+        .padding(16)
+        .background(Color.white) // Distinguish child area slightly if needed
+    }
+    
+    @ViewBuilder
+    private var errorDisplaySection: some View {
+        if let errorMessage = viewModel.errorMessage {
+            HStack {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text(errorMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.1))
+        }
     }
 }
 
