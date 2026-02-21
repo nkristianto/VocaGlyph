@@ -12,7 +12,7 @@ protocol AppStateManagerDelegate: AnyObject {
     func appStateDidChange(newState: AppState)
 }
 
-class AppStateManager: ObservableObject {
+class AppStateManager: ObservableObject, @unchecked Sendable {
     weak var delegate: AppStateManagerDelegate?
     
     @Published var currentState: AppState = .idle {

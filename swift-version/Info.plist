@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>VocaGlyph</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.nkristianto.vocaglyph</string>
+	<key>CFBundleName</key>
+	<string>VocaGlyph</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VocaGlyph uses the microphone to transcribe your speech into text.</string>
+</dict>
+</plist>

@@ -55,7 +55,7 @@ class HotkeyService {
         
         self.targetKeyCode = preset.keyCode
         self.targetFlags = preset.flags
-        print("Hotkey Service updated to listen for: \(presetRaw) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")
+        Logger.shared.info("Hotkey Service updated to listen for: \(presetRaw) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")
     }
     
     func start() {
@@ -64,7 +64,7 @@ class HotkeyService {
         let accessEnabled = AXIsProcessTrustedWithOptions(options)
         
         if !accessEnabled {
-            print("Accessibility permissions not granted. Hotkeys will not work until granted.")
+            Logger.shared.error("Accessibility permissions not granted. Hotkeys will not work until granted.")
         }
         
         let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
@@ -84,7 +84,7 @@ class HotkeyService {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            print("Failed to create event tap")
+            Logger.shared.error("Failed to create event tap")
             return
         }
         
@@ -93,7 +93,7 @@ class HotkeyService {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         
-        print("Hotkey capture started for Ctrl+Shift+C")
+        Logger.shared.info("Hotkey capture started for Ctrl+Shift+C")
     }
     
     func stop() {

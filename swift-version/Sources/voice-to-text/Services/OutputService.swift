@@ -2,7 +2,7 @@ import Cocoa
 import ApplicationServices
 import CoreGraphics
 
-class OutputService {
+class OutputService: @unchecked Sendable {
     
     /// Main entry point for outputting the transcribed text.
     func handleTranscriptionValue(_ text: String) {
@@ -30,7 +30,7 @@ class OutputService {
         
         if processedText.isEmpty { return }
         
-        print("Transcription: \(processedText)")
+        Logger.shared.info("Transcription: \(processedText)")
         
         // 1. Copy text to the system pasteboard
         copyToPasteboard(text: processedText + " ") // Add a trailing space for fluid dictation UX
@@ -42,7 +42,7 @@ class OutputService {
         if AXIsProcessTrusted() {
             simulatePasteKeystroke()
         } else {
-            print("AXIsProcessTrusted() returned false. Falling back to clipboard only.")
+            Logger.shared.error("AXIsProcessTrusted() returned false. Falling back to clipboard only.")
         }
     }
     
@@ -70,6 +70,6 @@ class OutputService {
         keyDownEvent.post(tap: .cghidEventTap)
         keyUpEvent.post(tap: .cghidEventTap)
         
-        print("Cmd+V synthesized via CGEvent!")
+        Logger.shared.info("Cmd+V synthesized via CGEvent!")
     }
 }
