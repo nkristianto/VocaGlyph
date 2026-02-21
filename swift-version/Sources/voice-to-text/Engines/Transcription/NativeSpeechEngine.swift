@@ -1,21 +1,7 @@
 import Foundation
 import AVFoundation
 
-func devLog(_ message: String) {
-    let url = URL(fileURLWithPath: "/tmp/vocaglyph_debug.log")
-    let formatter = DateFormatter()
-    formatter.dateFormat = "HH:mm:ss.SSS"
-    let time = formatter.string(from: Date())
-    let line = "[\(time)] \(message)\n"
-    
-    if let handle = try? FileHandle(forWritingTo: url) {
-        handle.seekToEndOfFile()
-        if let data = line.data(using: .utf8) { handle.write(data) }
-        handle.closeFile()
-    } else {
-        try? line.data(using: .utf8)?.write(to: url)
-    }
-}
+
 
 #if canImport(Speech)
 import Speech
@@ -29,31 +15,31 @@ public actor NativeSpeechEngine: TranscriptionEngine {
     public init() {}
     
     public func transcribe(audioBuffer: AVAudioPCMBuffer) async throws -> String {
-        devLog("NativeSpeechEngine: Starting transcription for \(audioBuffer.frameLength) frames")
+        Logger.shared.info("NativeSpeechEngine: Starting transcription for \(audioBuffer.frameLength) frames")
         
         let authStatus = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
                 continuation.resume(returning: status)
             }
         }
-        devLog("NativeSpeechEngine: Auth Status: \(authStatus.rawValue)")
+        Logger.shared.info("NativeSpeechEngine: Auth Status: \(authStatus.rawValue)")
         
         guard authStatus == .authorized else {
-            devLog("NativeSpeechEngine: Auth denied")
+            Logger.shared.info("NativeSpeechEngine: Auth denied")
             throw NSError(domain: "NativeSpeechEngine", code: 3, userInfo: [NSLocalizedDescriptionKey: "Apple Speech Recognition permission denied or restricted."])
         }
         
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
-            devLog("NativeSpeechEngine: No recognizer for en-US")
+            Logger.shared.info("NativeSpeechEngine: No recognizer for en-US")
             throw NSError(domain: "NativeSpeechEngine", code: 4, userInfo: [NSLocalizedDescriptionKey: "No Apple Dictation recognizer found for en-US."])
         }
         
         guard recognizer.isAvailable else {
-            devLog("NativeSpeechEngine: Recognizer is NOT available")
+            Logger.shared.info("NativeSpeechEngine: Recognizer is NOT available")
             throw NSError(domain: "NativeSpeechEngine", code: 5, userInfo: [NSLocalizedDescriptionKey: "Apple Dictation is temporarily unavailable natively on this device."])
         }
         
-        devLog("NativeSpeechEngine: Recognizer is available. Converting buffer to disk.")
+        Logger.shared.info("NativeSpeechEngine: Recognizer is available. Converting buffer to disk.")
         // due to internal IPC buffer limits. For complete buffers, SFSpeechURLRecognitionRequest is 100% reliable.
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
@@ -70,17 +56,17 @@ public actor NativeSpeechEngine: TranscriptionEngine {
         // Allow fallback to server if on-device offline models aren't completely downloaded
         request.requiresOnDeviceRecognition = false 
         
-        devLog("NativeSpeechEngine: Awaiting recognitionTask completion...")
+        Logger.shared.info("NativeSpeechEngine: Awaiting recognitionTask completion...")
         // Await the task block 
         return try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false
             var bestStringSoFar = ""
             
             recognizer.recognitionTask(with: request) { result, error in
-                devLog("NativeSpeechEngine: recognitionTask block hit. Error: \(error?.localizedDescription ?? "None"), Result: \(result != nil)")
+                Logger.shared.info("NativeSpeechEngine: recognitionTask block hit. Error: \(error?.localizedDescription ?? "None"), Result: \(result != nil)")
                 if let error = error {
                     if !hasResumed {
-                        devLog("NativeSpeechEngine Error: \(error.localizedDescription)")
+                        Logger.shared.info("NativeSpeechEngine Error: \(error.localizedDescription)")
                         hasResumed = true
                         // Cleanup
                         try? FileManager.default.removeItem(at: fileURL)
@@ -91,10 +77,10 @@ public actor NativeSpeechEngine: TranscriptionEngine {
                 
                 if let result = result {
                     bestStringSoFar = result.bestTranscription.formattedString
-                    devLog("NativeSpeechEngine: Received result. isFinal: \(result.isFinal), String: '\(bestStringSoFar)'")
+                    Logger.shared.info("NativeSpeechEngine: Received result. isFinal: \(result.isFinal), String: '\(bestStringSoFar)'")
                     if result.isFinal {
                         if !hasResumed {
-                            devLog("NativeSpeechEngine Final String Resuming: '\(bestStringSoFar)'")
+                            Logger.shared.info("NativeSpeechEngine Final String Resuming: '\(bestStringSoFar)'")
                             hasResumed = true
                             try? FileManager.default.removeItem(at: fileURL)
                             continuation.resume(returning: bestStringSoFar)
@@ -107,7 +93,7 @@ public actor NativeSpeechEngine: TranscriptionEngine {
             Task {
                 try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds ceiling
                 if !hasResumed {
-                    devLog("NativeSpeechEngine: Timeout Reached! Returning partial: '\(bestStringSoFar)'")
+                    Logger.shared.info("NativeSpeechEngine: Timeout Reached! Returning partial: '\(bestStringSoFar)'")
                     hasResumed = true
                     try? FileManager.default.removeItem(at: fileURL)
                     continuation.resume(returning: bestStringSoFar)

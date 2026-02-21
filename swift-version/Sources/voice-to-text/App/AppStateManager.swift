@@ -34,7 +34,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     // Called by AppDelegate after all dependencies are injected
     func startEngine() {
         let initialModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
-        devLog("AppStateManager: startEngine called with model: \(initialModel)")
+        Logger.shared.info("AppStateManager: startEngine called with model: \(initialModel)")
         Task {
             await switchTranscriptionEngine(toModel: initialModel)
         }
@@ -65,9 +65,9 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     }
     
     func processAudio(buffer: AVAudioPCMBuffer) {
-        devLog("AppStateManager: processAudio called with buffer size: \(buffer.frameLength)")
+        Logger.shared.info("AppStateManager: processAudio called with buffer size: \(buffer.frameLength)")
         guard let router = engineRouter else {
-            devLog("AppStateManager: engineRouter is nil. Aborting.")
+            Logger.shared.info("AppStateManager: engineRouter is nil. Aborting.")
             setIdle()
             return
         }
@@ -78,10 +78,10 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         Task {
             do {
                 var text = try await router.transcribe(audioBuffer: buffer)
-                devLog("AppStateManager: Router transcribed text successfully: '\(text)'")
+                Logger.shared.info("AppStateManager: Router transcribed text successfully: '\(text)'")
                 
                 if shouldPostProcess, let postProcessor = self.postProcessingEngine {
-                    devLog("AppStateManager: Post processing enabled, refining text...")
+                    Logger.shared.info("AppStateManager: Post processing enabled, refining text...")
                     do {
                         let originalText = text
                         let refinedText = try await withThrowingTaskGroup(of: String.self) { group in
@@ -99,25 +99,25 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                             return result
                         }
                         text = refinedText
-                        devLog("AppStateManager: Post processing completed successfully: '\(text)'")
+                        Logger.shared.info("AppStateManager: Post processing completed successfully: '\(text)'")
                     } catch {
-                        devLog("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
+                        Logger.shared.info("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
                         print("Post processing failed: \(error.localizedDescription)")
                     }
                 }
                 
                 DispatchQueue.main.async {
-                    devLog("AppStateManager: Dispatching back to main UI thread...")
+                    Logger.shared.info("AppStateManager: Dispatching back to main UI thread...")
                     if let del = self.delegate {
-                        devLog("AppStateManager: Delegate exists, calling appStateManagerDidTranscribe()")
+                        Logger.shared.info("AppStateManager: Delegate exists, calling appStateManagerDidTranscribe()")
                         del.appStateManagerDidTranscribe(text: text)
                     } else {
-                        devLog("AppStateManager: ERROR! Delegate is unexpectedly nil!")
+                        Logger.shared.info("AppStateManager: ERROR! Delegate is unexpectedly nil!")
                     }
                     self.setIdle() // Orchestrator handles reset
                 }
             } catch {
-                devLog("AppStateManager: Transcription failed: \(error.localizedDescription)")
+                Logger.shared.info("AppStateManager: Transcription failed: \(error.localizedDescription)")
                 print("Transcription failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.setIdle()

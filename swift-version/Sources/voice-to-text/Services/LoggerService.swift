@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 class Logger {
     static let shared = Logger()
@@ -47,14 +48,18 @@ class Logger {
         #endif
     }
     
+    @AppStorage("enableDebugLogging") private var isDebugEnabled: Bool = false
+    
     private func log(level: String, message: String) {
         let timestamp = dateFormatter.string(from: Date())
         let formattedMessage = "[\(timestamp)] [\(level)] \(message)\n"
         
-        // Print to Xcode console/Terminal for local developer debugging
+        // Always Print to Xcode console/Terminal for local developer debugging
         print(formattedMessage, terminator: "")
         
-        // Write persistently to disk
+        // Write persistently to disk ONLY if enabled
+        guard UserDefaults.standard.bool(forKey: "enableDebugLogging") else { return }
+        
         guard let data = formattedMessage.data(using: .utf8) else { return }
         
         logQueue.async {
@@ -67,5 +72,24 @@ class Logger {
                 print("CRITICAL: Failed to write to log file: \(error)")
             }
         }
+    }
+    
+    /// Clears the current log file
+    public func clearLogs() {
+        logQueue.async { [weak self] in
+            guard let self = self else { return }
+            do {
+                if FileManager.default.fileExists(atPath: self.logFileURL.path) {
+                    try FileManager.default.removeItem(at: self.logFileURL)
+                }
+            } catch {
+                print("Failed to clear log file: \(error)")
+            }
+        }
+    }
+    
+    /// Returns the URL of the log file so the UI can open it in Finder
+    public func getLogFileURL() -> URL {
+        return logFileURL
     }
 }
