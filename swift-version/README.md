@@ -6,6 +6,13 @@ VocaGlyph lives in your menu bar. Press a hotkey, speak, release — and your wo
 
 ---
 
+## How to Build
+
+```bash
+brew install create-dmg
+make package-dmg
+```
+
 ## Features
 
 ### 🎙️ Voice-to-Text Transcription
