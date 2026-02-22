@@ -1,5 +1,8 @@
 import SwiftUI
 import ServiceManagement
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 extension Binding {
     func logged(name: String) -> Binding<Value> {
@@ -109,7 +112,7 @@ struct CustomSidebar: View {
                 SidebarItemView(title: "General", icon: "gearshape.fill", tab: .general, selectedTab: $selectedTab)
                 SidebarItemView(title: "History", icon: "clock.arrow.circlepath", tab: .history, selectedTab: $selectedTab)
                 SidebarItemView(title: "Model", icon: "brain.head.profile", tab: .model, selectedTab: $selectedTab)
-                SidebarItemView(title: "Post-Processing", icon: "wand.and.stars", tab: .postProcessing, selectedTab: $selectedTab)
+                SidebarItemView(title: "Post-Processing", icon: "wand.and.stars", tab: .postProcessing, selectedTab: $selectedTab, showExperimentalBadge: true)
             }
             .padding(.horizontal, 6) // Container padding 6 + Inner 10 = 16pt icon alignment
             
@@ -135,6 +138,7 @@ struct SidebarItemView: View {
     let icon: String
     let tab: SettingsTab
     @Binding var selectedTab: SettingsTab?
+    var showExperimentalBadge: Bool = false
     
     var isSelected: Bool { selectedTab == tab }
     
@@ -153,6 +157,12 @@ struct SidebarItemView: View {
                     .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
                 
                 Spacer()
+                
+                if showExperimentalBadge {
+                    Image(systemName: "flask.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.orange.opacity(0.8))
+                }
             }
             .padding(.horizontal, 10) // Inner padding 10
             .padding(.vertical, 10)
@@ -176,7 +186,7 @@ struct GeneralSettingsView: View {
     @ObservedObject var stateManager: AppStateManager
     
     @AppStorage("globalShortcutPreset") private var globalShortcutPreset: String = GlobalShortcutOption.ctrlShiftC.rawValue
-    @AppStorage("dictationLanguage") private var dictationLanguage: String = "English (US)"
+    @AppStorage("dictationLanguage") private var dictationLanguage: String = "Auto-Detect"
     @AppStorage("autoPunctuation") private var autoPunctuation: Bool = true
     @AppStorage("removeFillerWords") private var removeFillerWords: Bool = false
     @AppStorage("selectedModel") private var selectedModel: String = "apple-native"
@@ -284,12 +294,17 @@ struct GeneralSettingsView: View {
                                 Text("Dictation Language")
                                     .fontWeight(.semibold)
                                     .foregroundStyle(Theme.navy)
-                                Text("Primary language for transcription")
+                                Text(dictationLanguage == "Auto-Detect" ? "Whisper detects language automatically" : "Primary language for transcription")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.textMuted)
                             }
                             Spacer()
                             Menu {
+                                Button("Auto-Detect") {
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'Auto-Detect'")
+                                    dictationLanguage = "Auto-Detect"
+                                }
+                                Divider()
                                 Button("English (US)") { 
                                     Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'English (US)'")
                                     dictationLanguage = "English (US)" 
@@ -305,6 +320,10 @@ struct GeneralSettingsView: View {
                                 Button("German (DE)") { 
                                     Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'German (DE)'")
                                     dictationLanguage = "German (DE)" 
+                                }
+                                Button("Indonesian (ID)") { 
+                                    Logger.shared.debug("Settings: Changed Dictation Language from '\(dictationLanguage)' to 'Indonesian (ID)'")
+                                    dictationLanguage = "Indonesian (ID)" 
                                 }
                             } label: {
                                 HStack {
@@ -506,9 +525,14 @@ struct PostProcessingSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Sticky Header
             VStack(alignment: .leading, spacing: 4) {
-                Text("Post-Processing Settings")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Theme.navy)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Post-Processing Settings")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                    Text("experimental")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.orange.opacity(0.9))
+                }
                 Text("Configure AI refinement for your dictation")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textMuted)
@@ -819,20 +843,95 @@ struct PostProcessingSettingsView: View {
     
     @ViewBuilder
     private var appleNativeCheck: some View {
-        if #available(macOS 15.1, *) {} else {
-            if selectedTaskModel == "apple-native" {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text("Requires macOS 15.1+. App will fallback to raw text.")
+        if selectedTaskModel == "apple-native" {
+            appleIntelligenceStatusBadge
+        }
+    }
+
+    /// Shows a live badge indicating Apple Intelligence availability for the selected model.
+    ///
+    /// Three states:
+    /// - macOS < 26: warns that Foundation Models is unavailable
+    /// - macOS 26+, AI not enabled: prompts user to enable it in System Settings
+    /// - macOS 26+, AI available: confirms the engine is ready
+    @ViewBuilder
+    private var appleIntelligenceStatusBadge: some View {
+        if #available(macOS 26.0, *) {
+            #if canImport(FoundationModels)
+            appleIntelligenceStatusBadgeMacOS26
+            #else
+            // Compiled with older SDK — warn accordingly
+            appleIntelligenceUnsupportedBadge(message: "Rebuild with Xcode 26 SDK to enable Foundation Models.")
+            #endif
+        } else {
+            appleIntelligenceUnsupportedBadge(message: "Requires macOS 26 (Tahoe) – will fall back to raw text.")
+        }
+    }
+
+    #if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    @ViewBuilder
+    private var appleIntelligenceStatusBadgeMacOS26: some View {
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Apple Intelligence ready")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+        case .unavailable(.appleIntelligenceNotEnabled):
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Apple Intelligence is not enabled.")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Theme.textMuted)
-                    Spacer()
+                    Text("Will fall back to raw text until enabled.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textMuted)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                Spacer()
+                Button("Open Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.general") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.accent.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+        default:
+            appleIntelligenceUnsupportedBadge(message: "Apple Intelligence unavailable on this device – will fall back to raw text.")
         }
+    }
+    #endif
+
+    @ViewBuilder
+    private func appleIntelligenceUnsupportedBadge(message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textMuted)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -1149,7 +1248,7 @@ struct ModelSettingsView: View {
                         }
                             
                         ModelCardView(
-                            title: "Tiny (Recommended)",
+                            title: "Tiny",
                             description: "Fastest inference for Whisper. Suitable for quick commands, basic punctuation, and short sentences.",
                             size: "75 MB",
                             isSelected: focusedModel == "tiny",
@@ -1178,35 +1277,6 @@ struct ModelSettingsView: View {
                             }
                         )
                         
-                        ModelCardView(
-                            title: "Base",
-                            description: "Balanced performance. Good trade-off between speed and accuracy for longer dictation.",
-                            size: "140 MB",
-                            isSelected: focusedModel == "base",
-                            isDownloaded: whisper.downloadedModels.contains("base"),
-                            isActive: selectedModel == "base" && whisper.activeModel == "base",
-                            isLoading: whisper.loadingModel == "base",
-                            downloadProgress: whisper.downloadProgresses["base"],
-                            onSelect: {
-                                focusedModel = "base"
-                            },
-                            onUse: {
-                                selectedModel = "base"
-                                whisper.changeModel(to: "base")
-                                Task {
-                                    await stateManager.switchTranscriptionEngine(toModel: "base")
-                                }
-                            },
-                            onDownload: {
-                                whisper.downloadModel("base")
-                            },
-                            onDeleteRequest: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    modelToDeleteTitle = "Base"
-                                    modelDeleteAction = { whisper.deleteModel("base") }
-                                }
-                            }
-                        )
                         
                         ModelCardView(
                             title: "Base (English Only)",
@@ -1239,7 +1309,7 @@ struct ModelSettingsView: View {
                         )
                         
                         ModelCardView(
-                            title: "Small",
+                            title: "Small (Multilingual)",
                             description: "Higher accuracy with acceptable speeds on modern Mac hardware.",
                             size: "240 MB",
                             isSelected: focusedModel == "small",
@@ -1270,30 +1340,153 @@ struct ModelSettingsView: View {
                         
                         ModelCardView(
                             title: "Distil Large v3",
-                            description: "Maximum accuracy. Heavy memory footprint and slower inference, recommended for Apple Silicon.",
+                            description: "Distil-Whisper English-optimised model. Fast inference at ~60% of large-v3 size. English only — use multilingual models below for Indonesian.",
                             size: "1.5 GB",
-                            isSelected: focusedModel == "distil-large-v3",
-                            isDownloaded: whisper.downloadedModels.contains("distil-large-v3"),
-                            isActive: selectedModel == "distil-large-v3" && whisper.activeModel == "distil-large-v3",
-                            isLoading: whisper.loadingModel == "distil-large-v3",
-                            downloadProgress: whisper.downloadProgresses["distil-large-v3"],
+                            isSelected: focusedModel == "distil-whisper_distil-large-v3",
+                            isDownloaded: whisper.downloadedModels.contains("distil-whisper_distil-large-v3"),
+                            isActive: selectedModel == "distil-whisper_distil-large-v3" && whisper.activeModel == "distil-whisper_distil-large-v3",
+                            isLoading: whisper.loadingModel == "distil-whisper_distil-large-v3",
+                            downloadProgress: whisper.downloadProgresses["distil-whisper_distil-large-v3"],
                             onSelect: {
-                                focusedModel = "distil-large-v3"
+                                focusedModel = "distil-whisper_distil-large-v3"
                             },
                             onUse: {
-                                selectedModel = "distil-large-v3"
-                                whisper.changeModel(to: "distil-large-v3")
+                                selectedModel = "distil-whisper_distil-large-v3"
+                                whisper.changeModel(to: "distil-whisper_distil-large-v3")
                                 Task {
-                                    await stateManager.switchTranscriptionEngine(toModel: "distil-large-v3")
+                                    await stateManager.switchTranscriptionEngine(toModel: "distil-whisper_distil-large-v3")
                                 }
                             },
                             onDownload: {
-                                whisper.downloadModel("distil-large-v3")
+                                whisper.downloadModel("distil-whisper_distil-large-v3")
                             },
                             onDeleteRequest: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     modelToDeleteTitle = "Distil Large v3"
-                                    modelDeleteAction = { whisper.deleteModel("distil-large-v3") }
+                                    modelDeleteAction = { whisper.deleteModel("distil-whisper_distil-large-v3") }
+                                }
+                            }
+                        )
+
+                        // MARK: - Multilingual Models (good for Indonesian + 98 other languages)
+
+                        ModelCardView(
+                            title: "Medium (Multilingual)",
+                            description: "99-language multilingual model. Good Indonesian accuracy (~14% WER). Best balance of speed and quality for non-English dictation on 8 GB Macs.",
+                            size: "1.5 GB",
+                            isSelected: focusedModel == "medium",
+                            isDownloaded: whisper.downloadedModels.contains("medium"),
+                            isActive: selectedModel == "medium" && whisper.activeModel == "medium",
+                            isLoading: whisper.loadingModel == "medium",
+                            downloadProgress: whisper.downloadProgresses["medium"],
+                            onSelect: {
+                                focusedModel = "medium"
+                            },
+                            onUse: {
+                                selectedModel = "medium"
+                                whisper.changeModel(to: "medium")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "medium")
+                                }
+                            },
+                            onDownload: {
+                                whisper.downloadModel("medium")
+                            },
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Medium (Multilingual)"
+                                    modelDeleteAction = { whisper.deleteModel("medium") }
+                                }
+                            }
+                        )
+
+                        ModelCardView(
+                            title: "Large v3 Quantized (Multilingual) ⭐",
+                            description: "Best under-1GB multilingual model. Near large-v3 accuracy at only ~626 MB. Great for Indonesian on any Apple Silicon Mac.",
+                            size: "626 MB",
+                            isSelected: focusedModel == "large-v3-v20240930_626MB",
+                            isDownloaded: whisper.downloadedModels.contains("large-v3-v20240930_626MB"),
+                            isActive: selectedModel == "large-v3-v20240930_626MB" && whisper.activeModel == "large-v3-v20240930_626MB",
+                            isLoading: whisper.loadingModel == "large-v3-v20240930_626MB",
+                            downloadProgress: whisper.downloadProgresses["large-v3-v20240930_626MB"],
+                            onSelect: {
+                                focusedModel = "large-v3-v20240930_626MB"
+                            },
+                            onUse: {
+                                selectedModel = "large-v3-v20240930_626MB"
+                                whisper.changeModel(to: "large-v3-v20240930_626MB")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "large-v3-v20240930_626MB")
+                                }
+                            },
+                            onDownload: {
+                                whisper.downloadModel("large-v3-v20240930_626MB")
+                            },
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Large v3 Quantized (Multilingual)"
+                                    modelDeleteAction = { whisper.deleteModel("large-v3-v20240930_626MB") }
+                                }
+                            }
+                        )
+
+
+                        ModelCardView(
+                            title: "Large v3 (Multilingual) ⭐",
+                            description: "Best overall multilingual accuracy. Top Indonesian performance (~7% WER). Requires 16 GB RAM and Apple Silicon.",
+                            size: "3 GB",
+                            isSelected: focusedModel == "large-v3",
+                            isDownloaded: whisper.downloadedModels.contains("large-v3"),
+                            isActive: selectedModel == "large-v3" && whisper.activeModel == "large-v3",
+                            isLoading: whisper.loadingModel == "large-v3",
+                            downloadProgress: whisper.downloadProgresses["large-v3"],
+                            onSelect: {
+                                focusedModel = "large-v3"
+                            },
+                            onUse: {
+                                selectedModel = "large-v3"
+                                whisper.changeModel(to: "large-v3")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "large-v3")
+                                }
+                            },
+                            onDownload: {
+                                whisper.downloadModel("large-v3")
+                            },
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Large v3 (Multilingual)"
+                                    modelDeleteAction = { whisper.deleteModel("large-v3") }
+                                }
+                            }
+                        )
+
+                        ModelCardView(
+                            title: "Large v3 Turbo (Multilingual) ⭐",
+                            description: "Speed-optimised large-v3 variant. Near-identical accuracy at 2× faster inference. Best choice for Indonesian on 16 GB Macs.",
+                            size: "1.5 GB",
+                            isSelected: focusedModel == "large-v3_turbo",
+                            isDownloaded: whisper.downloadedModels.contains("large-v3_turbo"),
+                            isActive: selectedModel == "large-v3_turbo" && whisper.activeModel == "large-v3_turbo",
+                            isLoading: whisper.loadingModel == "large-v3_turbo",
+                            downloadProgress: whisper.downloadProgresses["large-v3_turbo"],
+                            onSelect: {
+                                focusedModel = "large-v3_turbo"
+                            },
+                            onUse: {
+                                selectedModel = "large-v3_turbo"
+                                whisper.changeModel(to: "large-v3_turbo")
+                                Task {
+                                    await stateManager.switchTranscriptionEngine(toModel: "large-v3_turbo")
+                                }
+                            },
+                            onDownload: {
+                                whisper.downloadModel("large-v3_turbo")
+                            },
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Large v3 Turbo (Multilingual)"
+                                    modelDeleteAction = { whisper.deleteModel("large-v3_turbo") }
                                 }
                             }
                         )

@@ -31,9 +31,22 @@ public actor NativeSpeechEngine: TranscriptionEngine {
             throw NSError(domain: "NativeSpeechEngine", code: 3, userInfo: [NSLocalizedDescriptionKey: "Apple Speech Recognition permission denied or restricted."])
         }
         
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
-            Logger.shared.info("NativeSpeechEngine: No recognizer for en-US")
-            throw NSError(domain: "NativeSpeechEngine", code: 4, userInfo: [NSLocalizedDescriptionKey: "No Apple Dictation recognizer found for en-US."])
+        
+        // Resolve locale from user preference stored in UserDefaults
+        let savedLanguage = UserDefaults.standard.string(forKey: "dictationLanguage") ?? "Auto-Detect"
+        let localeIdentifier: String
+        switch savedLanguage {
+        case "English (US)":    localeIdentifier = "en-US"
+        case "Spanish (ES)":    localeIdentifier = "es-ES"
+        case "French (FR)":     localeIdentifier = "fr-FR"
+        case "German (DE)":     localeIdentifier = "de-DE"
+        case "Indonesian (ID)": localeIdentifier = "id-ID"
+        default:                localeIdentifier = "en-US"  // "Auto-Detect" → English (SFSpeechRecognizer requires explicit locale)
+        }
+        
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier)) else {
+            Logger.shared.info("NativeSpeechEngine: No recognizer for \(localeIdentifier)")
+            throw NSError(domain: "NativeSpeechEngine", code: 4, userInfo: [NSLocalizedDescriptionKey: "No Apple Dictation recognizer found for \(localeIdentifier)."])
         }
         
         guard recognizer.isAvailable else {

@@ -23,26 +23,27 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         UserDefaults.standard.string(forKey: "selectedModel") ?? ""
     }
     
-    // Convert UI string to WhisperKit locale code
-    private var dictationLanguageCode: String {
-        let saved = UserDefaults.standard.string(forKey: "dictationLanguage") ?? "English (US)"
+    // Convert UI string to WhisperKit locale code.
+    // "Auto-Detect" (the default) returns nil — Whisper selects the language from audio.
+    // "English (US)" returns "en" explicitly for users who want to lock to English.
+    private var dictationLanguageCode: String? {
+        let saved = UserDefaults.standard.string(forKey: "dictationLanguage") ?? "Auto-Detect"
         switch saved {
+        case "English (US)": return "en"
         case "Spanish (ES)": return "es"
         case "French (FR)": return "fr"
         case "German (DE)": return "de"
         case "Indonesian (ID)": return "id"
-        default: return "en"
+        default: return nil  // "Auto-Detect" or any unknown value → Whisper auto-detects
         }
     }
     
-    // Base Directory for WhisperKit
+    // Base directory for all VocaGlyph model storage
     private var baseDirectoryPath: URL {
         let fileManager = FileManager.default
         let homeDir = fileManager.homeDirectoryForCurrentUser
         let vocaGlyphDir = homeDir.appendingPathComponent(".VocaGlyph", isDirectory: true)
         let baseDir = vocaGlyphDir.appendingPathComponent("models", isDirectory: true)
-        
-        // Ensure directory exists
         if !fileManager.fileExists(atPath: baseDir.path) {
             do {
                 try fileManager.createDirectory(at: baseDir, withIntermediateDirectories: true, attributes: nil)
@@ -52,10 +53,19 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         }
         return baseDir
     }
+
+    // The default HuggingFace repo for WhisperKit CoreML models
+    static let defaultModelRepo = "argmaxinc/whisperkit-coreml"
+
     
-    // The actual directory where WhisperKit saves the models
+    // The actual directory where WhisperKit saves models for a given repo
+    private func modelsDirectory(for repo: String = WhisperService.defaultModelRepo) -> URL {
+        return baseDirectoryPath.appendingPathComponent("models/\(repo)")
+    }
+    
+    // Legacy accessor kept for compatibility (points to default repo)
     private var actualModelsDirectory: URL {
-        return baseDirectoryPath.appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+        modelsDirectory(for: WhisperService.defaultModelRepo)
     }
     
     init() {
@@ -76,14 +86,15 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         let fileManager = FileManager.default
         let modelsDir = actualModelsDirectory
 
-        
         var downloaded = Set<String>()
         do {
             let items = try fileManager.contentsOfDirectory(atPath: modelsDir.path)
             for item in items {
+                // Strip known prefixes to get back to the variant name
                 if item.hasPrefix("openai_whisper-") {
-                    let model = String(item.dropFirst("openai_whisper-".count))
-                    downloaded.insert(model)
+                    downloaded.insert(String(item.dropFirst("openai_whisper-".count)))
+                } else if item.hasPrefix("distil-whisper_") {
+                    downloaded.insert(item) // keep full name e.g. distil-whisper_distil-large-v3
                 }
             }
         } catch {
@@ -138,7 +149,11 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 self.loadingModel = modelName
             }
             
-            let modelPath = actualModelsDirectory.appendingPathComponent("openai_whisper-\(modelName)")
+            // On-disk folder name depends on the model prefix convention
+            let folderName = modelName.hasPrefix("distil-whisper_")
+                ? modelName
+                : "openai_whisper-\(modelName)"
+            let modelPath = actualModelsDirectory.appendingPathComponent(folderName)
             
             Logger.shared.info("WhisperService: Model available at \(modelPath). Loading into memory...")
             whisperKit = try await WhisperKit(modelFolder: modelPath.path)
@@ -182,8 +197,12 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         }
     }
     
-    func downloadModel(_ modelName: String) {
-        Logger.shared.info("WhisperService: Starting download for model '\(modelName)'")
+    /// Download a model from a HuggingFace repo that hosts WhisperKit CoreML files.
+    /// - Parameters:
+    ///   - modelName: The WhisperKit variant string (e.g. "large-v3_turbo", "distil-whisper_distil-large-v3")
+    ///   - repo: HuggingFace repo ID. Defaults to argmaxinc/whisperkit-coreml.
+    func downloadModel(_ modelName: String, from repo: String = WhisperService.defaultModelRepo) {
+        Logger.shared.info("WhisperService: Starting download for model '\(modelName)' from '\(repo)'")
         DispatchQueue.main.async {
             self.downloadState = "Downloading"
             self.downloadProgresses[modelName] = 0.0
@@ -191,12 +210,17 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         
         Task {
             do {
-                _ = try await WhisperKit.download(variant: modelName, downloadBase: baseDirectoryPath, progressCallback: { progress in
-                    DispatchQueue.main.async {
-                        self.downloadProgresses[modelName] = Float(progress.fractionCompleted)
-                        self.downloadState = "Downloading... \(Int(progress.fractionCompleted * 100))%"
+                _ = try await WhisperKit.download(
+                    variant: modelName,
+                    downloadBase: baseDirectoryPath,
+                    from: repo,
+                    progressCallback: { progress in
+                        DispatchQueue.main.async {
+                            self.downloadProgresses[modelName] = Float(progress.fractionCompleted)
+                            self.downloadState = "Downloading... \(Int(progress.fractionCompleted * 100))%"
+                        }
                     }
-                })
+                )
                 
                 Logger.shared.info("WhisperService: Successfully downloaded model '\(modelName)'")
                 checkDownloadedModels()
@@ -225,7 +249,10 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     func deleteModel(_ modelName: String) {
         Logger.shared.info("WhisperService: Requested to delete model '\(modelName)'")
         let fileManager = FileManager.default
-        let modelDir = actualModelsDirectory.appendingPathComponent("openai_whisper-\(modelName)")
+        let folderName = modelName.hasPrefix("distil-whisper_")
+            ? modelName
+            : "openai_whisper-\(modelName)"
+        let modelDir = actualModelsDirectory.appendingPathComponent(folderName)
         
         do {
             try fileManager.removeItem(at: modelDir)
@@ -268,13 +295,22 @@ extension WhisperService: TranscriptionEngine {
         let channelData = UnsafeBufferPointer<Float>(start: floatChannelData[0], count: frameLength)
         let audioArray = Array(channelData)
         
-        Logger.shared.info("WhisperService: Starting transcription on \(audioArray.count) frames using language code: \(dictationLanguageCode)")
+        let langCode = dictationLanguageCode
+        let langDescription = langCode ?? "auto-detect"
+        Logger.shared.info("WhisperService: Starting transcription on \(audioArray.count) frames using language: \(langDescription)")
 
-        // Prepare decoding options dynamically
+        // IMPORTANT: `usePrefillPrompt` must be `true` when a specific language is chosen.
+        // With `usePrefillPrompt: false`, WhisperKit ignores the `language` parameter entirely
+        // and always auto-detects from the audio (detectLanguage defaults to !usePrefillPrompt).
+        //
+        // - Explicit language (e.g. "en", "id"): usePrefillPrompt=true → forces language tokens
+        // - Auto-Detect (nil): usePrefillPrompt=false + detectLanguage=true → standard auto-detect
+        let isExplicitLanguage = langCode != nil
         let decodingOptions = DecodingOptions(
-            language: dictationLanguageCode,
-            usePrefillPrompt: false,
+            language: langCode,
+            usePrefillPrompt: isExplicitLanguage,
             usePrefillCache: true,
+            detectLanguage: isExplicitLanguage ? false : nil, // nil = WhisperKit defaults (auto-detect when prefill off)
             skipSpecialTokens: true,
             withoutTimestamps: true
         )

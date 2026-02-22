@@ -16,3 +16,15 @@ DerivedData/
 *.orig
 *.patch
 *.rej
+
+# Scratch / investigation scripts (root-level only)
+/test_*.swift
+/dummy.swift
+/dump.swift
+
+# swiftc-generated binary artifacts (root-level)
+/*.swiftmodule
+/*.swiftdoc
+/*.swiftsourceinfo
+/*.swiftinterface
+/*.abi.json

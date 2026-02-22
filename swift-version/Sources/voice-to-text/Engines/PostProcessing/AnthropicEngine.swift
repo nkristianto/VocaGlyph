@@ -119,7 +119,21 @@ public actor AnthropicEngine: PostProcessingEngine {
             throw AnthropicEngineError.invalidResponseFormat
         }
 
-        let result = extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 1. Strip chatty preambles ("Here is the revised text:", "**Revised Text:**", etc.)
+        let sanitized = PostProcessingOutputSanitizer.sanitize(extractedText)
+
+        // 2. Validate for refusals and hallucinations — fall back to raw input if invalid.
+        let result: String
+        switch PostProcessingOutputSanitizer.validate(sanitized, against: text) {
+        case .valid(let cleaned):
+            result = cleaned
+        case .fallback(let reason):
+            PostProcessingLogger.shared.error(
+                "AnthropicEngine: Output validation failed (\(reason.rawValue)) — using raw transcription"
+            )
+            result = text
+        }
+
         PostProcessingLogger.shared.info("AnthropicEngine: [RESULT] '\(result)'")
         return result
     }

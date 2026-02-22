@@ -188,6 +188,18 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 return
             }
 
+            // ── Stage 1.5: Silence / Hallucination Gate ───────────────────────────
+            // When the user says nothing (or only noise), the transcription engine can
+            // return an empty string or one of Whisper's well-known phantom phrases.
+            // Drop these here — before post-processing and before pasting — so the
+            // user sees no output at all, which is the correct behaviour for silence.
+            let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedText.isEmpty, !AppStateManager.isSilenceHallucination(trimmedText) else {
+                Logger.shared.info("AppStateManager: Dropping empty/hallucinated transcription: '\(text)'")
+                DispatchQueue.main.async { self.setIdle() }
+                return
+            }
+
             // ── Stage 2: Post-Processing (30s timeout) ────────────────────────────
             var finalText = text
             if shouldPostProcess,
@@ -305,5 +317,48 @@ extension AppStateManager {
         } else {
             return false
         }
+    }
+
+    /// Returns `true` if the transcription text is a known Whisper silence hallucination.
+    ///
+    /// Whisper commonly emits these phrases when the audio contains silence, background
+    /// noise, or is too short to decode meaningfully. None of them represent real speech.
+    static func isSilenceHallucination(_ text: String) -> Bool {
+        // Exact-match phrases (case-insensitive, trimmed)
+        let knownPhrases: Set<String> = [
+            // Whisper english silence tokens
+            "thank you", "thank you.", "thanks", "thanks.",
+            "thanks for watching", "thanks for watching.",
+            "thank you for watching", "thank you for watching.",
+            "thank you for listening", "thank you for listening.",
+            "bye", "bye.", "bye-bye", "bye-bye.", "goodbye", "goodbye.",
+            "you", "you.",
+            ".", "...", "..",
+            // Common noise transcriptions
+            "hmm", "hmm.", "um", "um.", "uh", "uh.",
+            "mm-hmm", "mm-hmm.", "mhm", "mhm.",
+            // Indonesian equivalents (common when language detection drifts)
+            "terima kasih", "terima kasih.",
+            "ya", "ya.", "iya", "iya.",
+        ]
+
+        let lower = text.lowercased()
+
+        // 1. Exact phrase match
+        if knownPhrases.contains(lower) { return true }
+
+        // 2. Bracket/paren-wrapped tags e.g. [BLANK_AUDIO], (Music), [silence]
+        //    These are Whisper's special token outputs for non-speech audio.
+        let stripped = lower.trimmingCharacters(in: .whitespacesAndNewlines)
+        if (stripped.hasPrefix("[") && stripped.hasSuffix("]")) ||
+           (stripped.hasPrefix("(") && stripped.hasSuffix(")")) {
+            return true
+        }
+
+        // 3. Very short output (1-2 non-whitespace chars) — almost certainly noise
+        let nonWhitespace = stripped.filter { !$0.isWhitespace }
+        if nonWhitespace.count <= 2 { return true }
+
+        return false
     }
 }
