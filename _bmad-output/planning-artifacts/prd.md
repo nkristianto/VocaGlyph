@@ -1,267 +1,242 @@
 ---
-stepsCompleted: [step-01-init, step-02-discovery, step-02b-vision, step-02c-executive-summary, step-03-success, step-04-journeys, step-05-domain, step-06-innovation, step-07-project-type, step-08-scoping, step-09-functional, step-10-nonfunctional]
-inputDocuments: []
+stepsCompleted:
+  - step-01-init
+  - step-02-discovery
+  - step-02b-vision
+  - step-02c-executive-summary
+  - step-03-success
+  - step-04-journeys
+  - step-06-innovation
+  - step-07-project-type
+  - step-08-scoping
+  - step-09-functional
+  - step-10-nonfunctional
+  - step-11-polish
+inputDocuments:
+  - _bmad-output/brainstorming/brainstorming-session-2026-02-21.md
+  - _bmad-output/planning-artifacts/research/technical-llm-integration-research-2026-02-21.md
 workflowType: 'prd'
-briefCount: 0
-researchCount: 0
-brainstormingCount: 0
-projectDocsCount: 0
 classification:
   projectType: desktop_app
-  domain: Productivity / AI Tooling
-  complexity: medium
-  projectContext: greenfield
-  primaryUsers: Power users (developers, writers, professionals) who want fast, private dictation
-  referenceApps: [VoiceInk, ParaSpeech]
-  mvpScope:
-    core: [menu-bar-icon, global-hotkey, whisper-cpp-inference, model-selection, transcription-overlay, paste-to-active-app, copy-to-clipboard, basic-settings]
-    excluded: [ai-text-enhancement, context-aware-modes, personal-dictionary, transcription-history, privacy-mode]
+  domain: general
+  complexity: low
+  projectContext: brownfield
 ---
 
 # Product Requirements Document - voice-to-text
 
 **Author:** Novian
-**Date:** 2026-02-20
-
----
+**Date:** 2026-02-21T19:54:44+07:00
 
 ## Executive Summary
 
-`voice-to-text` is a personal-use macOS menu bar dictation application that delivers fast, private, fully offline speech-to-text transcription powered by `whisper.cpp`. Built with Wails (Go backend + React frontend), it provides a lightweight native binary that outperforms Electron-based alternatives without the steep learning curve of Rust. The user activates recording via a global hotkey, speaks, and the transcribed text is pasted directly into the active application — zero cloud dependency, zero latency from network calls.
-
-The primary user is the developer-author himself: a power user who lives in the keyboard, values privacy by default, and wants a tool he owns and can extend without friction.
+VocaGlyph is a multi-tiered, intelligent dictation pipeline. It features a "Dynamic Model Juggler" to route audio and text through specialized models based on the task. It strictly separates raw transcription (using models like Parakeet for high accuracy) from post-processing text refinement (using Apple Intelligence or cloud APIs for grammar and rephrasing). 
 
 ### What Makes This Special
 
-The pragmatic technology choice is the differentiator: Wails + Go sits at the optimal intersection of performance (lean native binary, no Chromium runtime), developer productivity (Go's simplicity and strong standard library), and full-stack control (whisper.cpp integrated directly in Go via CGo or subprocess). Where existing tools like VoiceInk are excellent but opaque, and Electron-based tools are transparent but bloated, this project represents a personally-owned, auditable, and extensible alternative on a stack that feels just right.
+VocaGlyph provides an "Open Model Sandbox" that separates transcription from post-processing. It prioritizes absolute accuracy and privacy through local execution while offering frictionless text polish, treating LLMs as swappable, transparent utilities rather than opaque systems.
 
 ## Project Classification
 
 | Attribute | Value |
 |-----------|-------|
-| **Project Type** | Desktop App (macOS native, Wails) |
-| **Domain** | Personal Productivity / Local AI Tooling |
-| **Complexity** | Medium |
-| **Context** | Greenfield |
-| **Primary User** | Solo developer (personal tool, potential open-source sharing) |
-| **Reference Apps** | VoiceInk, ParaSpeech |
-| **Tech Stack** | Wails v2, Go 1.22+, whisper.cpp (Metal GPU via CGo), React/Vite, PortAudio |
-| **OS Integration** | Global hotkey via CGo `CGEventTap`; paste via `osascript`; clipboard via `pbcopy` |
-| **Storage** | Models + config at `~/.voice-to-text/`; launch-at-login via launchd plist |
-
----
+| **Project Type** | Desktop App (macOS native, AppKit + SwiftUI) |
+| **Domain** | General / Local AI Tooling |
+| **Complexity** | Low |
+| **Context** | Brownfield (Adding LLM Post-Processing Pipeline) |
+| **Primary User** | Power users wanting transparent, highly-accurate dictation toolkits |
 
 ## Success Criteria
 
 ### User Success
-
-The primary user (author) considers the product successful when the core dictation loop works end-to-end: activate recording via a global hotkey, speak, stop, and see the transcribed text appear in the active application or clipboard — without manual intervention. Integration with a local AI model for transcription is the minimum bar. No distribution, onboarding, or retention metrics apply at this stage.
+Users can seamlessly dictate text with high accuracy using Parakeet and have it automatically rephrased or grammar-corrected by Apple Intelligence (or a cloud API) before being pasted into their active application, without needing to manually copy/paste or switch contexts.
 
 ### Business Success
-
-Not applicable — this is a personal tool with no commercial intent for the MVP. Success is measured entirely by personal utility and daily replaceability of existing tools (VoiceInk, ParaSpeech).
+The application successfully supports a multi-tiered LLM pipeline without introducing significant latency or user confusion, maintaining its core value proposition of being a fast, private, and frictionless dictation tool.
 
 ### Technical Success
-
-| Metric | Target |
-|--------|--------|
-| **Transcription latency** | < 500ms from end of utterance to text appearing on screen |
-| **Memory footprint** | < 200MB RAM during active use |
-| **Transcription accuracy** | 90–95% for everyday English speech |
-| **App startup** | < 2 seconds to ready state (menu bar icon visible and hotkey active) |
-| **Offline operation** | 100% — zero network calls at runtime |
+- **Routing:** Implementation of a strict `LanguageModel` protocol that abstracts MLX, Apple Intelligence, and API backends.
+- **Latency:** Post-processing via Apple Intelligence or APIs adds no more than 1-2 seconds of perceived latency to the dictation loop.
+- **Accuracy:** Core transcription relies exclusively on optimized models (like Parakeet) to guarantee baseline text quality before post-processing.
+- **Stability:** The app must gracefully handle API timeouts or missing local models by falling back to raw transcription insertion.
 
 ### Measurable Outcomes
-
-- User can dictate and have text inserted into any macOS app within 500ms of stopping speech
-- App runs stably for an extended session without memory leaks or crashes
-- whisper.cpp model (base or small) produces ≥90% accuracy on conversational English
-
----
+- `LanguageModel` protocol is implemented and can hot-swap between at least two backends (e.g., Parakeet for transcription, Apple Intelligence for post-processing).
+- The settings UI successfully exposes the "Open Model Sandbox" controls.
 
 ## Product Scope
 
-### MVP — Minimum Viable Product
-
-- macOS menu bar icon (persistent, launches on login)
-- Global hotkey to start/stop recording
-- whisper.cpp local inference (model: tiny, base, or small — user-selectable)
-- Real-time or near-real-time transcription display (overlay/panel)
-- Auto-paste transcribed text into the active application
-- Copy to clipboard as fallback
-- Basic settings: hotkey configuration, model selection, language selection
+### MVP - Minimum Viable Product
+- Integration of Parakeet via `mlx-swift` for core transcription.
+- Integration of Apple Intelligence (Foundation Models) for default, zero-download post-processing (grammar/rephrasing).
+- "Dynamic Model Juggler" architecture allowing separate models for Transcription vs. Post-Processing.
+- Settings UI to toggle post-processing on/off and select the engine.
 
 ### Growth Features (Post-MVP)
-
-- Transcription history log (menu bar accessible)
-- AI text enhancement (grammar correction, tone polish via local LLM)
-- Per-app context modes (different settings per active application)
-- Personal dictionary / custom word replacements
-- Auto-send (press Enter after paste)
+- Integration of custom/API-based LLMs (Gemini, Anthropic, Qwen via Llama.cpp) as alternative post-processing engines in the sandbox.
+- Custom prompts for the post-processing engine (e.g., "translate to Spanish", "make this sound professional").
 
 ### Vision (Future)
-
-- Privacy mode (no history persistence)
-- Multi-language model support beyond English
-- Voice commands for app control
-- Open-source release with community model support
-
----
+- Fully automated contextual routing (e.g., detecting if the active app is Xcode and automatically applying a code-formatting prompt to the LLM).
 
 ## User Journeys
 
-### Journey 1 — Core Dictation Loop (Happy Path)
+### Journey 1: The Core Dictation Loop (WhisperKit Default)
+**Novian wants the fastest, lightest raw dictation.**
+1. Presses global hotkey (`⌃Space`) — the minimalist HUD appears.
+2. Speaks naturally.
+3. Presses hotkey to stop.
+4. **VocaGlyph** detects a CoreML model is selected and immediately transcribes the audio locally using the **WhisperKit** engine.
+5. The raw text is pasted into the active application within 500ms.
 
-**Novian is coding and wants to dictate a code comment or compose a Slack message.**
+### Journey 2: High-Accuracy Dictation (Automatic Parakeet Switch)
+**Novian is dictating a complex, technical document and needs the highest possible accuracy.**
+1. Opens Settings and selects the "Parakeet (GGUF)" model from the available model list.
+2. Presses global hotkey and speaks, using domain-specific technical jargon.
+3. **VocaGlyph** detects the GGUF model type and *automatically* routes the audio through the MLX-Swift engine.
+4. The transcription, powered by Apple Silicon's Unified Memory, is pasted into the active application.
 
-1. Presses global hotkey (`⌃Space` by default) — menu bar icon pulses to indicate recording active
-2. Speaks naturally for a few seconds
-3. Presses hotkey again (or releases, if push-to-talk mode) to stop recording
-4. whisper.cpp processes audio locally — transcribed text appears within 500ms
-5. Text is auto-pasted at cursor position in the active application
-6. Work continues without touching the mouse
+### Journey 3: The Enhanced Context Pipeline (Apple Intelligence Post-Processing)
+**Novian wants to dictate a complex thought and have it polished.**
+1. Toggles **"Enable Post-Processing"** to ON in Settings.
+2. Selects the engine as "Apple Intelligence" and sets a prompt (e.g., "Fix grammar").
+3. Activates hotkey, speaks, stops.
+4. VocaGlyph transcribes via the chosen Transcription Model (WhisperKit or MLX automatically).
+5. It then passes that text to the macOS 15.1 Foundation Models framework (Apple Intelligence).
+6. The polished text is synthetic-pasted into the app.
 
-**Capabilities revealed:** Global hotkey registration, audio capture pipeline, VAD or manual stop trigger, whisper.cpp inference, paste-to-active-app via Accessibility API
-
----
-
-### Journey 2 — First-Time Model Setup
-
-**Novian installs the app — no Whisper model is present yet.**
-
-1. Launches app — detects no model downloaded
-2. Settings panel appears: select model size (tiny / base / small)
-3. Model downloads with progress indicator
-4. Model verified; app signals readiness via menu bar icon
-5. First dictation works immediately
-
-**Capabilities revealed:** First-run detection, model download/management UI, local model storage, progress feedback
-
----
-
-### Journey 3 — Changing Settings Mid-Use
-
-**Novian wants to switch the active model or rebind the hotkey.**
-
-1. Clicks menu bar icon → opens Settings
-2. Selects a different model (downloads if not cached)
-3. Updates hotkey binding
-4. Saves — changes apply immediately, no restart required
-
-**Capabilities revealed:** Settings persistence, hot-swap model loading, runtime hotkey re-registration
-
----
-
-### Journey 4 — Clipboard Fallback (Edge Case)
-
-**Novian dictates while in an app that blocks Accessibility API paste (e.g., a password field).**
-
-1. Dictation completes — paste attempt is blocked or fails silently
-2. App detects failure, copies text to clipboard, shows brief non-intrusive notification
-3. User manually pastes with `⌘V`
-
-**Capabilities revealed:** Paste failure detection, clipboard fallback, status notification
-
----
+### Journey 4: The Power User Sandbox (External API Post-Processing)
+**Novian wants to translate dictation or use an external API for heavy NLP lifting.**
+1. In Settings, changes the "Post-Processing Engine" from Apple Intelligence to a Cloud API (e.g., Gemini or Anthropic).
+2. Sets a custom prompt: "Translate whatever I say into professional business Spanish."
+3. Activates hotkey, speaks in English.
+4. VocaGlyph transcribes the audio locally (via WhisperKit or MLX), and dynamically offloads the post-processing task to the Gemini API.
+5. Perfect Spanish is pasted into the email client.
 
 ### Journey Requirements Summary
 
-| Capability | Required For |
-|-----------|-------------|
-| Global hotkey registration (system-wide) | Journeys 1, 3, 4 |
-| Audio capture (microphone) | Journeys 1, 2 |
-| whisper.cpp local inference | Journey 1 |
-| Model download + local storage management | Journey 2 |
-| Paste-to-active-app (Accessibility API) | Journeys 1, 4 |
-| Clipboard copy fallback | Journey 4 |
-| Non-intrusive system notification | Journey 4 |
-| Settings persistence across sessions | Journey 3 |
-| Menu bar icon with status indicator | All journeys |
+| Capability                         | Required For                                    |
+| ---------------------------------- | ----------------------------------------------- |
+| **(Existing)** WhisperKit Engine   | Journey 1 (Transcription via CoreML)            |
+| MLX-Swift Engine (Parakeet/Alala)  | Journey 2 (Transcription via GGUF)              |
+| Automatic Engine Routing Logic     | Journeys 1, 2 (Switches based on model type)    |
+| Apple Intelligence macOS 15.1 API  | Journey 3 (Post-Processing Default)             |
+| Cloud API Integration (Gemini/Anthropic) | Journey 4 (Post-Processing Alternative)         |
+| Post-Processing Selection UI       | Journeys 3, 4                                   |
+| **(Existing)** Paste-to-active-app | All Journeys                                    |
 
----
+## Innovation & Novel Patterns
+
+### Detected Innovation Areas
+- **The "Dynamic Model Juggler" Architecture**: A novel approach to local LLM orchestration where the application acts as a smart router. It deliberately decouples the *Transcription Engine* (optimized for speed/accuracy via WhisperKit CoreML or MLX-Swift GGUF models) from the *Post-Processing Engine* (optimized for language logic via Apple Intelligence or Cloud APIs). 
+- **The "Open Model Sandbox"**: Reversing the industry trend of opaque, monolithic AI features by exposing the processing pipeline directly to the power user, allowing them to hot-swap local memory-mapped models with Cloud APIs on the fly depending on battery constraints or privacy needs.
+
+### Market Context & Competitive Landscape
+Current market leaders (like standard dictation apps or even OS-level tools) either rely solely on closed-source cloud APIs (high latency, low privacy) or single-model local inference (high privacy, low intelligence for complex rephrasing). VocaGlyph pioneers a hybrid edge-compute approach natively on Apple Silicon, offering the best of both worlds without the bloat of an Electron wrapper.
+
+### Validation Approach
+- **Technical Validation**: Benchmark TTFT (Time-to-First-Token) and overall memory pressure when rapidly switching between the `WhisperService` and an MLX-Swift `LanguageModel` implementation.
+- **User Validation**: Test if the latency introduced by the Apple Intelligence post-processing step (Journey 3) breaks the user's workflow compared to the instant raw dictation (Journey 1).
+
+### Risk Mitigation
+- **Risk**: The "Model Juggler" introduces too much latency or RAM overhead.
+- **Mitigation**: Implement aggressive model unloading/eviction in memory, and ensure Journey 1 (WhisperKit purely) remains the default, guaranteed-fast fallback if the post-processing pipeline times out.
+
+## Desktop App Specific Requirements
+
+### Project-Type Overview
+VocaGlyph is a native macOS desktop application designed to run persistently in the background (Accessory mode) with ultra-low resource utilization. It relies entirely on local execution and synthetic OS events rather than cloud services or user-facing windows.
+
+### Technical Architecture Considerations
+
+- **Platform Support**: Exclusively macOS 14+ / Apple Silicon (M-series) due to the heavy reliance on unified memory for MLX, `WhisperKit` CoreML optimization, and `macOS 15.1 Foundation Models`.
+- **System Integration**: 
+  - Requires **Accessibility Permissions** to use `CGEvent` for global hotkey registration and synthetic keyboard pasting into the active application.
+  - Requires **Microphone Permissions** via `AVFoundation`.
+- **Offline Capabilities**: 100% functional offline for CoreML and MLX transcription. Apple Intelligence varies based on OS-level model availability. Cloud APIs (Journey 4) naturally require a connection.
+- **Update Strategy**: standard manual app updates or via Sparkle (if distributed outside the Mac App Store), though initial MVP is local/manual build.
+
+### Implementation Considerations
+- **Memory Management**: Critical. `WhisperService` (CoreML) and `LanguageModel` (MLX/GGUF) must run isolated in `actors` on background threads to prevent main thread blocking. Aggressive model eviction is required when toggling between engines.
+- **UI Paradigm**: No traditional Dock icon or main window. Interactions occur via an `NSStatusItem` (Menu Bar), a floating `NSPanel` (for the recording HUD), and a SwiftUI-based Settings Window.
+
+## Project Scoping & Phased Development
+
+### MVP Strategy & Philosophy
+**MVP Approach:** *Experience-first MVP.* The core value is frictionless, private dictation. We must prove that local AI (via MLX and CoreML) can rival cloud speed without the privacy tradeoff, and that Apple Intelligence can add intelligent polish without breaking the user flow.
+**Resource Requirements:** Solo developer (Novian) with heavy reliance on existing Swift packages (`mlx-swift`, `WhisperKit`) to accelerate development.
+
+### MVP Feature Set (Phase 1)
+**Core User Journeys Supported:**
+- Journey 1: Core Dictation (WhisperKit) -> Paste
+- Journey 2: High-Accuracy Dictation (Parakeet/MLX) -> Paste
+- Journey 3: Pipeline Dictation (Transcription + Apple Intelligence Polish) -> Paste
+
+**Must-Have Capabilities:**
+- Global hotkey listener and OS-level synthetic pasting (`CGEvent`).
+- Minimalist floating recording HUD (AppKit/SwiftUI).
+- `WhisperService` implementation for `WhisperKit` CoreML models (existing).
+- `LanguageModel` protocol and `MLXService` implementation for Parakeet (GGUF).
+- Foundation Models integration for basic post-processing (grammar/rephrasing).
+- Settings View to toggle post-processing on/off and select the transcription model.
+
+### Post-MVP Features
+**Phase 2 (Growth - The Sandbox):**
+- Implementation of the Cloud API backend (Journey 4) to support Gemini and Anthropic.
+- Custom user-defined prompts for the post-processing step (e.g., translation, summarization).
+- Visual feedback in the HUD indicating which engine is currently processing.
+
+**Phase 3 (Expansion):**
+- Automated Contextual Routing (detecting the active app and applying a specific prompt, like formatting code for Xcode vs writing prose for Mail).
+
+### Risk Mitigation Strategy
+- **Technical Risks:** MLX integration causing memory spikes or blocking the main thread. *Mitigation:* Strict isolation using Swift `actors` and prioritizing the existing `WhisperKit` implementation as the stable default.
+- **Market Risks:** Apple Intelligence limits API usage or introduces too much latency. *Mitigation:* The core app functions perfectly offline with 0 latency using just the transcription engine. Apple Intelligence is strictly an opt-in *enhancement*, not a dependency.
+- **Resource Risks:** Solo developer bandwidth constraints. *Mitigation:* Push all Cloud API integrations (OAuth, API key management, networking code) to Phase 2 to drastically simplify the MVP scope.
 
 ## Functional Requirements
 
-### Recording & Audio Capture
+### 1. Global Activation & Feedback
+- **FR1:** Users can start and stop dictation globally via a customizable hotkey.
+- **FR2:** Users receive visual feedback indicating the current system state (Listening, Processing, Inactive).
+- **FR3:** Users can manually cancel an active dictation session via the visual interface.
+- **FR4:** Users receive visual feedback identifying the currently active processing engine.
 
-- FR1: User can start audio recording via a configurable global hotkey
-- FR2: User can stop audio recording via the same hotkey (toggle) or by releasing (push-to-talk)
-- FR3: System captures audio from the default macOS microphone
-- FR4: System provides visual feedback (menu bar icon state change) when recording is active
-- FR5: System handles microphone permission request gracefully on first use
+### 2. Audio Capture & Transcription
+- **FR5:** System captures voice input while dictation is active.
+- **FR6:** System converts spoken audio to text locally using a designated high-efficiency model (e.g., CoreML).
+- **FR7:** System converts spoken audio to text locally using a designated high-accuracy model (e.g., GGUF).
 
-### Transcription
+### 3. Engine Orchestration & Post-Processing
+- **FR8:** Users can enable or disable automated text post-processing.
+- **FR9:** System can refine transcribed text using native OS intelligence frameworks (e.g., Apple Intelligence).
+- **FR10:** System can refine transcribed text using user-selected local open models (e.g., Qwen) for offline processing.
+- **FR11:** System can refine transcribed text using configured external cloud APIs.
+- **FR12:** Users can define custom instructions (prompts) that govern how post-processing modifies the text.
+- **FR13:** System outputs raw transcription if the post-processing engine fails or times out.
 
-- FR6: System transcribes recorded audio using a locally-installed whisper.cpp model
-- FR7: System processes transcription entirely on-device with no network calls
-- FR8: User can select the active Whisper model (tiny, base, small) from settings
-- FR9: System displays transcribed text in a floating overlay/panel before inserting
+### 4. Text Output
+- **FR14:** System inserts final processed text directly into the previously focused application at the cursor position.
 
-### Text Output
-
-- FR10: System auto-pastes transcribed text into the currently active application at cursor position
-- FR11: System copies transcribed text to clipboard as a fallback output method
-- FR12: System detects paste failure and falls back to clipboard copy automatically
-- FR13: System shows a brief non-intrusive notification when clipboard fallback is used
-
-### Model Management
-
-- FR14: User can browse and select available Whisper model sizes from settings
-- FR15: System downloads the selected model on first use with progress indication
-- FR16: System stores models locally and reuses them across sessions
-- FR17: System detects missing models and prompts user to download before first use
-
-### Settings & Configuration
-
-- FR18: User can configure the global hotkey binding
-- FR19: User can select the active Whisper model
-- FR20: User can select the transcription language
-- FR21: Settings persist across application restarts
-- FR22: Settings changes (model, hotkey) take effect immediately without restart
-
-### Application Lifecycle
-
-- FR23: Application runs as a macOS menu bar app with no Dock icon (`mac.ActivationPolicyAccessory` + `getlantern/systray` for NSStatusItem)
-- FR24: Application can be configured to launch at login (launchd plist via `LoginItemService`)
-- FR25: User can quit the application from the systray icon menu or via ⌘Q shortcut
-- FR26: Application initialises and is ready for dictation within 2 seconds of launch
-
-> [!NOTE]
-> Story 7 (combined Menu Bar Shell + Settings Panel) implements FR23 (true menu bar agent mode — previously only partially implemented) and partial FR19/FR20/FR21.
-
----
+### 5. Application Configuration
+- **FR15:** Users can access application settings via a persistent system menu.
+- **FR16:** Users can select their active transcription model from available local models.
+- **FR17:** Users can select their active post-processing engine.
+- **FR18:** Users can securely store API credentials for cloud-based engines.
+- **FR19:** Users can configure the application to launch automatically on system startup.
 
 ## Non-Functional Requirements
 
-### Performance
+### Performance & Latency
+- **NFR1 (Startup):** The application must be ready to receive audio within 100ms of the global hotkey being pressed, ensuring the user's first spoken word is never truncated.
+- **NFR2 (Raw Transcription latency):** The Time-to-First-Token (TTFT) for local MLX or CoreML transcription must not exceed 500ms on an Apple M1 base model.
+- **NFR3 (Pipeline Latency):** When post-processing is enabled (via Apple Intelligence or local Qwen), the total perceived latency from the end of speech to pasting text must not exceed 1.5 seconds under normal system load.
+- **NFR4 (Memory Footprint):** The background process (when inactive) must consume less than 100MB of RAM. Models must be aggressively evicted from active memory when not in use for >5 minutes to prevent system bloat.
 
-- Transcription latency: < 500ms from end of utterance to text appearing on screen (using base or small model on Apple Silicon)
-- App startup time: < 2 seconds from launch to hotkey-ready state
-- Audio capture latency: < 50ms buffering to avoid clipping the start of speech
-- whisper.cpp inference must not block the UI thread; run in background goroutine
-
-### Resource Usage
-
-- Memory footprint: < 200MB RAM during active transcription session
-- CPU usage during idle (no recording): < 1% average
-- Model files stored in user's Application Support directory; no temp file leaks on crash
+### Security & Privacy
+- **NFR5 (Local First):** Core transcription (WhisperKit/MLX) and local post-processing (Apple Intelligence/Qwen) must execute 100% on-device with zero network requests. The application must function completely with macOS Wi-Fi disabled.
+- **NFR6 (Ephemeral Data):** Audio recordings must be held only in volatile memory (RAM) during processing and immediately destroyed after transcription. No audio files are ever written to disk.
+- **NFR7 (API Key Storage):** External API keys (for Gemini/Anthropic) must be stored securely in the macOS Keychain, never in plaintext configuration files.
 
 ### Reliability
-
-- App must not crash on extended use sessions (minimum 4-hour continuous background run)
-- Hotkey must remain registered even after other apps register overlapping shortcuts (graceful conflict handling)
-- Audio capture must recover cleanly if microphone is disconnected and reconnected
-
-### Privacy & Security
-
-- Zero network calls at runtime — all inference is fully local
-- Audio data is never written to disk; processed in-memory only
-- No analytics, telemetry, or crash reporting to external services
-- App requests only the minimum macOS permissions: Microphone, Accessibility (for paste)
-
-### Compatibility
-
-- Minimum macOS: 13 Ventura
-- Apple Silicon (M-series) primary target; Intel compatibility best-effort
-- Wails framework version: latest stable at development start
-- whisper.cpp models: `.bin` format, compatible with standard whisper.cpp releases
+- **NFR8 (Graceful Degradation):** If a Cloud API takes longer than 2000ms to respond for post-processing, the system must automatically abort the network request and immediately paste the raw transcribed text instead, preventing UX lockup.

@@ -1,0 +1,1008 @@
+/* ============================================================
+   voice-to-text Design System — App.css
+   Design tokens + component classes
+   ============================================================ */
+
+/* ── Design Tokens ─────────────────────────────────────── */
+:root {
+  /* Colors */
+  --vtt-accent: #f20d0d;
+  --vtt-accent-glow: rgba(242, 13, 13, 0.35);
+  --vtt-accent-dim: rgba(242, 13, 13, 0.15);
+
+  --vtt-bg-glass: rgba(18, 18, 22, 0.88);
+  --vtt-bg-surface: rgba(255, 255, 255, 0.05);
+  --vtt-bg-surface-hover: rgba(255, 255, 255, 0.09);
+
+  --vtt-border: rgba(255, 255, 255, 0.10);
+  --vtt-border-strong: rgba(255, 255, 255, 0.18);
+
+  --vtt-text-primary: #ffffff;
+  --vtt-text-secondary: rgba(255, 255, 255, 0.55);
+  --vtt-text-tertiary: rgba(255, 255, 255, 0.30);
+
+  /* Typography */
+  --vtt-font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --vtt-font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+
+  --vtt-text-xs: 11px;
+  --vtt-text-sm: 13px;
+  --vtt-text-base: 14px;
+  --vtt-text-lg: 16px;
+  --vtt-text-xl: 20px;
+
+  --vtt-weight-regular: 400;
+  --vtt-weight-semibold: 600;
+
+  --vtt-leading-tight: 1.2;
+  --vtt-leading-normal: 1.5;
+
+  /* Spacing */
+  --vtt-space-1: 4px;
+  --vtt-space-2: 8px;
+  --vtt-space-3: 12px;
+  --vtt-space-4: 16px;
+  --vtt-space-5: 20px;
+  --vtt-space-6: 24px;
+  --vtt-space-8: 32px;
+
+  /* Radius */
+  --vtt-radius-sm: 6px;
+  --vtt-radius-md: 10px;
+  --vtt-radius-lg: 14px;
+  --vtt-radius-xl: 20px;
+  --vtt-radius-pill: 999px;
+
+  /* Shadows */
+  --vtt-shadow-glow: 0 0 12px var(--vtt-accent-glow);
+  --vtt-shadow-window: 0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px var(--vtt-border);
+
+  /* Motion */
+  --vtt-transition-fast: 120ms ease;
+  --vtt-transition-base: 220ms ease;
+  --vtt-transition-slow: 380ms ease;
+
+  /* Mic icon */
+  --vtt-mic-size: 48px;
+  --vtt-mic-font-size: 36px;
+
+  /* Popover */
+  --vtt-popover-width: 100%;
+  --vtt-popover-padding: var(--vtt-space-6);
+}
+
+/* ── Base reset — fill the Wails window exactly ─────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* ── Popover Container ──────────────────────────────────── */
+.vtt-popover {
+  width: var(--vtt-popover-width);
+  min-height: 100%;
+  padding: var(--vtt-popover-padding);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vtt-space-3);
+  position: relative;
+
+  background: var(--vtt-bg-glass);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+
+  /* No border-radius — macOS window chrome handles the rounded corners */
+  border: none;
+  box-shadow: none;
+
+  /* Make the whole window draggable like a native macOS panel */
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Interactive elements must opt OUT of drag so clicks still work */
+.vtt-popover button,
+.vtt-popover input,
+.vtt-popover select,
+.vtt-popover a,
+.vtt-popover label,
+.vtt-popover [role="button"],
+.vtt-settings-row,
+.vtt-conflict-banner,
+.vtt-status-text {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ── Drag handle (top header area) ──────────────────────── */
+/* This is the JS-drag zone: mic icon + title + status text.  */
+/* cursor:grab gives natural feedback that it's draggable.   */
+.vtt-drag-handle {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--vtt-space-1);
+  padding: var(--vtt-space-2) 0;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vtt-drag-handle:active {
+  cursor: grabbing;
+}
+
+
+/* ── Mic Icon ───────────────────────────────────────────── */
+.vtt-mic-icon {
+  width: var(--vtt-mic-size);
+  height: var(--vtt-mic-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--vtt-mic-font-size);
+  line-height: 1;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: filter var(--vtt-transition-base),
+    transform var(--vtt-transition-base);
+}
+
+.vtt-mic-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.3));
+}
+
+/* Idle state */
+.vtt-state-idle .vtt-mic-icon {
+  filter: drop-shadow(var(--vtt-shadow-glow));
+}
+
+/* Recording state — pulse animation */
+.vtt-state-recording .vtt-mic-icon {
+  filter: drop-shadow(0 0 16px var(--vtt-accent));
+  animation: vtt-pulse 1.2s ease-in-out infinite;
+}
+
+/* Processing state */
+.vtt-state-processing .vtt-mic-icon {
+  opacity: 0.8;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.4));
+  animation: vtt-processing-spin 2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+@keyframes vtt-processing-spin {
+  0% {
+    transform: scale(0.9) rotate(0deg);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(0.9) rotate(360deg);
+    opacity: 0.5;
+  }
+}
+
+@keyframes vtt-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 10px var(--vtt-accent));
+  }
+
+  50% {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 20px var(--vtt-accent));
+  }
+}
+
+/* ── App Title ──────────────────────────────────────────── */
+.vtt-title {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-base);
+  font-weight: var(--vtt-weight-semibold);
+  color: var(--vtt-text-primary);
+  letter-spacing: 0.01em;
+  line-height: var(--vtt-leading-tight);
+}
+
+/* ── Status Text ────────────────────────────────────────── */
+.vtt-status-text {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-sm);
+  font-weight: var(--vtt-weight-regular);
+  color: var(--vtt-text-secondary);
+  line-height: var(--vtt-leading-normal);
+  transition: color var(--vtt-transition-base);
+}
+
+.vtt-state-recording .vtt-status-text {
+  color: var(--vtt-accent);
+}
+
+.vtt-state-processing .vtt-status-text {
+  color: var(--vtt-text-tertiary);
+}
+
+/* ── Status Badge (hotkey hint) ─────────────────────────── */
+.vtt-status-badge {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-tertiary);
+  background: var(--vtt-bg-surface);
+  border: 1px solid var(--vtt-border);
+  padding: 2px var(--vtt-space-2);
+  border-radius: var(--vtt-radius-sm);
+  letter-spacing: 0.02em;
+  transition: color var(--vtt-transition-fast),
+    background var(--vtt-transition-fast);
+}
+
+.vtt-status-badge:hover {
+  color: var(--vtt-text-secondary);
+  background: var(--vtt-bg-surface-hover);
+}
+
+/* ── Divider ────────────────────────────────────────────── */
+.vtt-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--vtt-border);
+  flex-shrink: 0;
+  margin: var(--vtt-space-1) 0;
+}
+
+/* ── Toggle (for Settings — Story 1.2) ─────────────────── */
+.vtt-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--vtt-space-4);
+}
+
+.vtt-toggle__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-sm);
+  color: var(--vtt-text-secondary);
+}
+
+.vtt-toggle__switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.vtt-toggle__switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.vtt-toggle__track {
+  position: absolute;
+  inset: 0;
+  background: var(--vtt-bg-surface);
+  border: 1px solid var(--vtt-border-strong);
+  border-radius: var(--vtt-radius-pill);
+  cursor: pointer;
+  transition: background var(--vtt-transition-base),
+    border-color var(--vtt-transition-base);
+}
+
+.vtt-toggle__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--vtt-text-secondary);
+  border-radius: 50%;
+  transition: transform var(--vtt-transition-base),
+    background var(--vtt-transition-base);
+}
+
+.vtt-toggle__switch input:checked+.vtt-toggle__track {
+  background: var(--vtt-accent-dim);
+  border-color: var(--vtt-accent);
+}
+
+.vtt-toggle__switch input:checked+.vtt-toggle__track::after {
+  transform: translateX(16px);
+  background: var(--vtt-accent);
+}
+
+/* ── Recording HUD ──────────────────────────────────────── */
+/* Floating pill that appears during recording.             */
+
+@keyframes vtt-dot-pulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.5);
+    opacity: 0.75;
+  }
+}
+
+/* Staggered waveform bars — individual height animations */
+@keyframes vtt-bar-1 {
+
+  0%,
+  100% {
+    height: 4px
+  }
+
+  50% {
+    height: 16px
+  }
+}
+
+@keyframes vtt-bar-2 {
+
+  0%,
+  100% {
+    height: 8px
+  }
+
+  50% {
+    height: 22px
+  }
+}
+
+@keyframes vtt-bar-3 {
+
+  0%,
+  100% {
+    height: 14px
+  }
+
+  50% {
+    height: 6px
+  }
+}
+
+@keyframes vtt-bar-4 {
+
+  0%,
+  100% {
+    height: 6px
+  }
+
+  50% {
+    height: 18px
+  }
+}
+
+@keyframes vtt-bar-5 {
+
+  0%,
+  100% {
+    height: 18px
+  }
+
+  50% {
+    height: 8px
+  }
+}
+
+@keyframes vtt-bar-6 {
+
+  0%,
+  100% {
+    height: 10px
+  }
+
+  50% {
+    height: 4px
+  }
+}
+
+@keyframes vtt-hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px)
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0)
+  }
+}
+
+@keyframes vtt-hud-out {
+  from {
+    opacity: 1;
+    transform: translateY(0)
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px)
+  }
+}
+
+.vtt-hud {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--vtt-space-3);
+  padding: var(--vtt-space-2) var(--vtt-space-4);
+
+  background: rgba(18, 18, 18, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(242, 13, 13, 0.50);
+  border-radius: var(--vtt-radius-pill);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--vtt-border);
+  animation: vtt-hud-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.vtt-hud--hiding {
+  animation: vtt-hud-out 180ms ease both;
+}
+
+/* Pulsing red dot */
+.vtt-hud__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vtt-accent);
+  box-shadow: 0 0 8px var(--vtt-accent-glow);
+  flex-shrink: 0;
+  animation: vtt-dot-pulse 1s ease-in-out infinite;
+}
+
+/* Waveform */
+.vtt-hud__wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+}
+
+.vtt-hud__bar {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--vtt-accent);
+  opacity: 0.85;
+  animation-duration: 0.8s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.vtt-hud__bar:nth-child(1) {
+  animation-name: vtt-bar-1;
+  animation-delay: 0s;
+}
+
+.vtt-hud__bar:nth-child(2) {
+  animation-name: vtt-bar-2;
+  animation-delay: 0.1s;
+}
+
+.vtt-hud__bar:nth-child(3) {
+  animation-name: vtt-bar-3;
+  animation-delay: 0.2s;
+}
+
+.vtt-hud__bar:nth-child(4) {
+  animation-name: vtt-bar-4;
+  animation-delay: 0.05s;
+}
+
+.vtt-hud__bar:nth-child(5) {
+  animation-name: vtt-bar-5;
+  animation-delay: 0.15s;
+}
+
+.vtt-hud__bar:nth-child(6) {
+  animation-name: vtt-bar-6;
+  animation-delay: 0.25s;
+}
+
+/* Label + timer */
+.vtt-hud__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  font-weight: var(--vtt-weight-semibold);
+  color: var(--vtt-accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vtt-hud__timer {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-secondary);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  min-width: 30px;
+}
+
+
+
+/* ── Transcription Overlay (Story 3.3) ──────────────────── */
+/* Floating result panel — appears after recording stops.   */
+
+@keyframes vtt-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes vtt-overlay-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+.vtt-overlay {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(var(--vtt-popover-width) - 32px);
+  padding: var(--vtt-space-3) var(--vtt-space-4);
+
+  background: rgba(14, 26, 18, 0.95);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+
+  border-radius: var(--vtt-radius-lg);
+  border: 1px solid rgba(34, 197, 94, 0.50);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--vtt-border);
+  animation: vtt-overlay-in 240ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  z-index: 10;
+}
+
+.vtt-overlay--hiding {
+  animation: vtt-overlay-out 180ms ease both;
+}
+
+/* Header row: checkmark + label */
+.vtt-overlay__header {
+  display: flex;
+  align-items: center;
+  gap: var(--vtt-space-2);
+  margin-bottom: var(--vtt-space-3);
+}
+
+.vtt-overlay__check {
+  font-size: 14px;
+  color: #22c55e;
+  /* green-500 */
+  flex-shrink: 0;
+}
+
+.vtt-overlay__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  font-weight: var(--vtt-weight-semibold);
+  color: #22c55e;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+/* Transcribed text */
+.vtt-overlay__text {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-base);
+  font-weight: var(--vtt-weight-regular);
+  color: var(--vtt-text-primary);
+  line-height: var(--vtt-leading-normal);
+  word-break: break-word;
+}
+
+/* Progress bar — drains over 1.5s to signal auto-dismiss */
+.vtt-overlay__progress {
+  height: 2px;
+  margin-top: var(--vtt-space-3);
+  border-radius: 1px;
+  background: rgba(34, 197, 94, 0.20);
+  overflow: hidden;
+}
+
+.vtt-overlay__progress-bar {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 1px;
+  animation: vtt-progress-drain 1.5s linear forwards;
+  transform-origin: left;
+}
+
+@keyframes vtt-progress-drain {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* ── Clipboard Toast (Epic 4) ───────────────────────────── */
+/* Shown when osascript paste fails — fallback to clipboard. */
+
+@keyframes vtt-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.vtt-toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--vtt-space-2);
+  padding: var(--vtt-space-1) var(--vtt-space-3);
+
+  background: rgba(30, 23, 8, 0.96);
+  border: 1px solid rgba(234, 179, 8, 0.50);
+  /* amber */
+  border-radius: var(--vtt-radius-pill);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  animation: vtt-toast-in 200ms ease both;
+  z-index: 20;
+  white-space: nowrap;
+}
+
+.vtt-toast__icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.vtt-toast__text {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: #fbbf24;
+  /* amber-400 */
+  letter-spacing: 0.02em;
+}
+
+.vtt-toast__text kbd {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.30);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* ── Settings Panel (Story 7) ─────────────────────────── */
+
+.vtt-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.vtt-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vtt-settings__label {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 56px;
+}
+
+/* Model dropdown (reusing select-field) */
+
+/* ── ModelMissingBanner ──────────────────────────────────────
+   Shown when no model is installed (first launch or missing file). */
+.vtt-model-missing {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: rgba(242, 13, 13, 0.08);
+  border: 1px solid rgba(242, 13, 13, 0.25);
+  border-radius: var(--vtt-radius);
+  animation: slideIn 200ms ease;
+}
+
+.vtt-model-missing__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: var(--vtt-text-sm);
+  color: var(--vtt-text);
+}
+
+.vtt-model-missing__icon {
+  font-size: 14px;
+}
+
+.vtt-model-missing__body {
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text-muted);
+  margin: 0 0 8px 0;
+}
+
+.vtt-model-missing__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vtt-model-missing__btn {
+  width: 100%;
+  padding: 6px 10px;
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--vtt-radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms, border-color 150ms;
+}
+
+.vtt-model-missing__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.vtt-model-missing__btn--done {
+  color: var(--vtt-success, #4ade80);
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(74, 222, 128, 0.06);
+  cursor: default;
+}
+
+.vtt-model-missing__btn:disabled:not(.vtt-model-missing__btn--done) {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+
+/* Generic Select Field */
+.vtt-select-field {
+  font-family: var(--vtt-font);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px 20px 3px 6px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath stroke='%236b7280' stroke-width='1.5' fill='none' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  transition: border-color 150ms;
+}
+
+.vtt-select-field:hover,
+.vtt-select-field:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+  outline: none;
+}
+
+/* ── Hotkey Capture badge (Story 6.2) ───────────────────── */
+
+.vtt-hotkey-badge {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  font-weight: 600;
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, box-shadow 150ms;
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
+}
+
+.vtt-hotkey-badge:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Recording / capture-in-progress state */
+.vtt-hotkey-badge--capturing {
+  border-color: rgba(99, 179, 237, 0.70);
+  /* blue */
+  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.20);
+  animation: vtt-hotkey-pulse 1s ease-in-out infinite;
+  color: #63b3ed;
+}
+
+@keyframes vtt-hotkey-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.20);
+  }
+
+  50% {
+    box-shadow: 0 0 0 4px rgba(99, 179, 237, 0.10);
+  }
+}
+
+/* Conflict / error flash */
+.vtt-hotkey-badge--error {
+  border-color: rgba(248, 113, 113, 0.70);
+  /* red-400 */
+  box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.20);
+  color: #f87171;
+  animation: vtt-hotkey-error 0.3s ease-in-out 4;
+}
+
+@keyframes vtt-hotkey-error {
+
+  0%,
+  100% {
+    background: rgba(248, 113, 113, 0.08);
+  }
+
+  50% {
+    background: rgba(248, 113, 113, 0.18);
+  }
+}
+
+.vtt-hotkey-badge__hint {
+  font-style: italic;
+  opacity: 0.80;
+  letter-spacing: 0.02em;
+}
+
+/* Text-input fallback mode */
+.vtt-hotkey-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.vtt-hotkey-text-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vtt-hotkey-text-input {
+  font-family: var(--vtt-font-mono);
+  font-size: var(--vtt-text-xs);
+  color: var(--vtt-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(99, 179, 237, 0.50);
+  border-radius: var(--vtt-radius-sm);
+  padding: 3px 6px;
+  width: 110px;
+  outline: none;
+}
+
+.vtt-hotkey-text-input::placeholder {
+  color: var(--vtt-text-muted);
+  opacity: 0.60;
+}
+
+.vtt-hotkey-text-ok,
+.vtt-hotkey-text-cancel {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vtt-font-mono);
+  transition: background 150ms;
+}
+
+.vtt-hotkey-text-ok {
+  background: rgba(99, 179, 237, 0.20);
+  color: #63b3ed;
+}
+
+.vtt-hotkey-text-ok:hover {
+  background: rgba(99, 179, 237, 0.35);
+}
+
+.vtt-hotkey-text-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vtt-text-muted);
+}
+
+.vtt-hotkey-text-cancel:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* "type it" link shown during capture mode */
+.vtt-hotkey-type-link {
+  font-family: var(--vtt-font);
+  font-size: 9px;
+  color: var(--vtt-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+  opacity: 0.70;
+  transition: opacity 150ms;
+}
+
+.vtt-hotkey-type-link:hover {
+  opacity: 1;
+}
+
+/* Error / conflict tooltip */
+.vtt-hotkey-error-tip {
+  font-family: var(--vtt-font);
+  font-size: 9px;
+  color: #f87171;
+  max-width: 180px;
+  text-align: right;
+  line-height: 1.4;
+  white-space: pre-line;
+}
