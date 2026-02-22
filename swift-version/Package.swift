@@ -15,7 +15,8 @@ let package = Package(
             targets: ["voice-to-text"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0")
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", branch: "main")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -23,7 +24,9 @@ let package = Package(
         .executableTarget(
             name: "voice-to-text",
             dependencies: [
-                .product(name: "WhisperKit", package: "WhisperKit")
+                .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm")
             ],
             resources: [
                 .process("Resources")

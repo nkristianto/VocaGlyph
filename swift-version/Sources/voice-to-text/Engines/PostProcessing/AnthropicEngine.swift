@@ -74,16 +74,24 @@ public actor AnthropicEngine: PostProcessingEngine {
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.httpBody = jsonData
-        
+
+        // ── Request log ─────────────────────────────────────────────────────
+        PostProcessingLogger.shared.info("AnthropicEngine: [REQUEST] POST https://api.anthropic.com/v1/messages")
+        PostProcessingLogger.shared.info("AnthropicEngine: [REQUEST] System prompt: '\(prompt)'")
+        PostProcessingLogger.shared.info("AnthropicEngine: [REQUEST] Input (\(text.count) chars): '\(text)'")
+        if let bodyStr = String(data: jsonData, encoding: .utf8) {
+            PostProcessingLogger.shared.info("AnthropicEngine: [REQUEST] Body: \(bodyStr)")
+        }
+
         let data: Data
         let response: URLResponse
         do {
-            Logger.shared.info("AnthropicEngine: Initiating REST call to API provider...")
             (data, response) = try await session.data(for: request)
+            // ── Response log ───────────────────────────────────────────────
             if let responseString = String(data: data, encoding: .utf8) {
-                Logger.shared.info("AnthropicEngine: Received raw JSON: \(responseString)")
+                PostProcessingLogger.shared.info("AnthropicEngine: [RESPONSE] HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1): \(responseString)")
             } else {
-                Logger.shared.info("AnthropicEngine: Received response from API provider (Unable to decode to string).")
+                PostProcessingLogger.shared.info("AnthropicEngine: [RESPONSE] Unable to decode response as UTF-8.")
             }
         } catch {
             Logger.shared.error("AnthropicEngine: Network connection failed: \(error.localizedDescription)")
@@ -104,14 +112,15 @@ public actor AnthropicEngine: PostProcessingEngine {
             throw AnthropicEngineError.apiError(statusCode: httpResponse.statusCode, message: "Unknown API Error")
         }
         
-        // Parse successful response
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let content = json["content"] as? [[String: Any]],
               let firstBlock = content.first,
               let extractedText = firstBlock["text"] as? String else {
             throw AnthropicEngineError.invalidResponseFormat
         }
-        
-        return extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let result = extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        PostProcessingLogger.shared.info("AnthropicEngine: [RESULT] '\(result)'")
+        return result
     }
 }

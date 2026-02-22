@@ -19,7 +19,33 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     var engineRouter: EngineRouter?
     var sharedWhisper: WhisperService?
     var postProcessingEngine: (any PostProcessingEngine)?
-    
+
+    /// Singleton local LLM engine — persists model weights in Unified Memory.
+    /// Recreated only when the user switches to a different model ID.
+    private var _localLLMEngine: LocalLLMEngine?
+    private var _localLLMEngineModelId: String?
+
+    private var localLLMEngine: LocalLLMEngine {
+        let modelId = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
+        if let existing = _localLLMEngine, _localLLMEngineModelId == modelId {
+            return existing
+        }
+        Logger.shared.info("AppStateManager: Creating LocalLLMEngine for model: \(modelId)")
+        let engine = LocalLLMEngine(modelId: modelId)
+        _localLLMEngine = engine
+        _localLLMEngineModelId = modelId
+        return engine
+    }
+
+    /// Download/load progress for the local LLM model.
+    /// - `nil`: no active download
+    /// - `0.0 ..< 1.0`: downloading / loading
+    /// - `1.0`: complete (set back to nil after 1.5 s)
+    @Published var localLLMDownloadProgress: Double? = nil
+
+    /// `true` when the model files exist in the HuggingFace disk cache.
+    @Published var localLLMIsDownloaded: Bool = false
+
     // We no longer track selectedEngine explicitly. We derive the engine 
     // from the model selection inside switchTranscriptionEngine.
     
@@ -59,6 +85,11 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 Logger.shared.info("AppStateManager: Apple Intelligence selected but requires macOS 15.1+")
                 self.postProcessingEngine = nil
             }
+        } else if selectedPostModel == "local-llm" {
+            let selectedLocalModel = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
+            Logger.shared.info("AppStateManager: Switching post-processing engine to LocalLLMEngine (model: \(selectedLocalModel))")
+            self.postProcessingEngine = localLLMEngine
+            Task { self.localLLMIsDownloaded = await localLLMEngine.isModelDownloaded() }
         } else {
             self.postProcessingEngine = nil
         }
@@ -87,59 +118,70 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             setIdle()
             return
         }
-        
+
         let shouldPostProcess = UserDefaults.standard.bool(forKey: "enablePostProcessing")
         let postProcessPrompt = UserDefaults.standard.string(forKey: "postProcessingPrompt") ?? ""
-        
+
         Task {
+            // ── Stage 1: Transcription (15s timeout) ─────────────────────────────
+            let text: String
             do {
-                var text = try await router.transcribe(audioBuffer: buffer)
-                Logger.shared.info("AppStateManager: Router transcribed text successfully: '\(text)'")
-                
-                if shouldPostProcess, let postProcessor = self.postProcessingEngine, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Logger.shared.info("AppStateManager: Post processing enabled, refining text...")
-                    do {
-                        let originalText = text
-                        let refinedText = try await withThrowingTaskGroup(of: String.self) { group in
-                            group.addTask {
-                                return try await postProcessor.refine(text: originalText, prompt: postProcessPrompt)
-                            }
-                            group.addTask {
-                                try await Task.sleep(nanoseconds: 10_000_000_000)
-                                throw NSError(domain: "TimeoutError", code: 408, userInfo: [NSLocalizedDescriptionKey: "Post-processing timed out after 10000ms"])
-                            }
-                            guard let result = try await group.next() else {
-                                throw CancellationError()
-                            }
-                            group.cancelAll()
-                            return result
-                        }
-                        text = refinedText
-                        Logger.shared.info("AppStateManager: Post processing completed successfully: '\(text)'")
-                    } catch {
-                        Logger.shared.error("AppStateManager: Post processing failed: \(error.localizedDescription). Gracefully falling back to raw text.")
+                text = try await withThrowingTaskGroup(of: String.self) { group in
+                    group.addTask { try await router.transcribe(audioBuffer: buffer) }
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: 15_000_000_000)
+                        throw NSError(domain: "TimeoutError", code: 408,
+                                      userInfo: [NSLocalizedDescriptionKey: "Transcription timed out after 15s"])
                     }
+                    guard let result = try await group.next() else { throw CancellationError() }
+                    group.cancelAll()
+                    return result
                 }
-                
-                DispatchQueue.main.async {
-                    Logger.shared.info("AppStateManager: Dispatching back to main UI thread...")
-                    if let del = self.delegate {
-                        Logger.shared.info("AppStateManager: Delegate exists, calling appStateManagerDidTranscribe()")
-                        del.appStateManagerDidTranscribe(text: text)
-                    } else {
-                        Logger.shared.info("AppStateManager: ERROR! Delegate is unexpectedly nil!")
-                    }
-                    self.setIdle() // Orchestrator handles reset
-                }
+                Logger.shared.info("AppStateManager: Transcription complete: '\(text)'")
             } catch {
-                Logger.shared.error("AppStateManager: Transcription failed: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    self.setIdle()
+                Logger.shared.error("AppStateManager: Transcription failed — \(error.localizedDescription)")
+                DispatchQueue.main.async { self.setIdle() }
+                return
+            }
+
+            // ── Stage 2: Post-Processing (30s timeout) ────────────────────────────
+            var finalText = text
+            if shouldPostProcess,
+               let postProcessor = self.postProcessingEngine,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Logger.shared.info("AppStateManager: [PostProcessing] Starting with prompt: '\(postProcessPrompt)'")
+                do {
+                    let refined = try await withThrowingTaskGroup(of: String.self) { group in
+                        group.addTask { try await postProcessor.refine(text: text, prompt: postProcessPrompt) }
+                        group.addTask {
+                            try await Task.sleep(nanoseconds: 30_000_000_000)
+                            throw NSError(domain: "TimeoutError", code: 408,
+                                          userInfo: [NSLocalizedDescriptionKey: "Post-processing timed out after 30s"])
+                        }
+                        guard let result = try await group.next() else { throw CancellationError() }
+                        group.cancelAll()
+                        return result
+                    }
+                    Logger.shared.info("AppStateManager: [PostProcessing] Done. Result: '\(refined)'")
+                    finalText = refined
+                } catch {
+                    Logger.shared.error("AppStateManager: [PostProcessing] Failed — \(error.localizedDescription). Using raw transcription.")
                 }
+            }
+
+            DispatchQueue.main.async {
+                Logger.shared.info("AppStateManager: Dispatching back to main UI thread...")
+                if let del = self.delegate {
+                    Logger.shared.info("AppStateManager: Delegate exists, calling appStateManagerDidTranscribe()")
+                    del.appStateManagerDidTranscribe(text: finalText)
+                } else {
+                    Logger.shared.info("AppStateManager: ERROR! Delegate is unexpectedly nil!")
+                }
+                self.setIdle()
             }
         }
     }
-    
+
     public func switchTranscriptionEngine(toModel modelName: String) async {
         guard let router = engineRouter else { return }
         
@@ -160,6 +202,50 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             if let whisper = sharedWhisper {
                 await router.setEngine(whisper)
             }
+        }
+    }
+
+    /// Evicts the local LLM model from Unified Memory.
+    /// Called from `SettingsView` when the user presses "Free Model Memory".
+    /// Never call `localLLMEngine.unloadModel()` directly from UI — always go through the Orchestrator.
+    public func unloadLocalLLMEngine() async {
+        await localLLMEngine.unloadModel()
+    }
+
+    /// Downloads and loads the local LLM model into Unified Memory, reporting progress
+    /// via `@Published localLLMDownloadProgress`. Safe to call from a SwiftUI `Task {}`.
+    public func preloadLocalLLMModel() async {
+        DispatchQueue.main.async { self.localLLMDownloadProgress = 0.0 }
+        do {
+            try await localLLMEngine.preloadModel { [weak self] fraction in
+                // DispatchQueue.main.async is safe here: mlx's Hub downloader calls this
+                // closure on a background thread. Task { @MainActor } can trigger a Swift
+                // concurrency runtime SIGABRT in release builds from non-async contexts.
+                DispatchQueue.main.async { self?.localLLMDownloadProgress = fraction }
+            }
+            DispatchQueue.main.async {
+                self.localLLMDownloadProgress = 1.0
+                self.localLLMIsDownloaded = true
+            }
+            // Reset progress indicator after a short delay
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            DispatchQueue.main.async { self.localLLMDownloadProgress = nil }
+        } catch {
+            Logger.shared.error("AppStateManager: Model preload failed — \(error.localizedDescription)")
+            DispatchQueue.main.async { self.localLLMDownloadProgress = nil }
+        }
+    }
+
+    /// Deletes the downloaded model files from disk and evicts from RAM.
+    public func deleteLocalLLMModel() async {
+        do {
+            try await localLLMEngine.deleteModelFromDisk()
+            await MainActor.run {
+                self.localLLMIsDownloaded = false
+                self.localLLMDownloadProgress = nil
+            }
+        } catch {
+            Logger.shared.error("AppStateManager: Model deletion failed — \(error.localizedDescription)")
         }
     }
 }

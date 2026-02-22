@@ -74,28 +74,35 @@ public actor GeminiEngine: PostProcessingEngine {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
-        
+
+        // ── Request log ──────────────────────────────────────────────────────────
+        PostProcessingLogger.shared.info("GeminiEngine: [REQUEST] POST gemini-2.5-flash:generateContent")
+        PostProcessingLogger.shared.info("GeminiEngine: [REQUEST] Prompt: '\(prompt)'")
+        PostProcessingLogger.shared.info("GeminiEngine: [REQUEST] Input (\(text.count) chars): '\(text)'")
+        if let bodyStr = String(data: jsonData, encoding: .utf8) {
+            PostProcessingLogger.shared.info("GeminiEngine: [REQUEST] Body: \(bodyStr)")
+        }
+
         let data: Data
         let response: URLResponse
         do {
-            Logger.shared.info("GeminiEngine: Initiating REST call to API provider...")
             (data, response) = try await session.data(for: request)
+            // ── Response log ─────────────────────────────────────────────────────
             if let responseString = String(data: data, encoding: .utf8) {
-                Logger.shared.info("GeminiEngine: Received raw JSON: \(responseString)")
+                PostProcessingLogger.shared.info("GeminiEngine: [RESPONSE] HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1): \(responseString)")
             } else {
-                Logger.shared.info("GeminiEngine: Received response from API provider (Unable to decode to string).")
+                PostProcessingLogger.shared.info("GeminiEngine: [RESPONSE] Unable to decode response as UTF-8.")
             }
         } catch {
             Logger.shared.error("GeminiEngine: Network connection failed: \(error.localizedDescription)")
             throw GeminiEngineError.networkError(error.localizedDescription)
         }
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GeminiEngineError.invalidResponseFormat
         }
-        
+
         if !(200...299).contains(httpResponse.statusCode) {
-            // Attempt to parse error response
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let errorObj = errorJson["error"] as? [String: Any],
                let message = errorObj["message"] as? String {
@@ -103,26 +110,28 @@ public actor GeminiEngine: PostProcessingEngine {
             }
             throw GeminiEngineError.apiError(statusCode: httpResponse.statusCode, message: "Unknown API Error")
         }
-        
+
         // Parse successful response
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let candidates = json["candidates"] as? [[String: Any]],
               let firstCandidate = candidates.first else {
             throw GeminiEngineError.invalidResponseFormat
         }
-        
+
         if let finishReason = firstCandidate["finishReason"] as? String,
            finishReason == "SAFETY" || finishReason == "RECITATION" {
             throw GeminiEngineError.contentBlocked
         }
-        
+
         guard let content = firstCandidate["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let firstPart = parts.first,
               let extractedText = firstPart["text"] as? String else {
             throw GeminiEngineError.invalidResponseFormat
         }
-        
-        return extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let result = extractedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        PostProcessingLogger.shared.info("GeminiEngine: [RESULT] '\(result)'")
+        return result
     }
 }

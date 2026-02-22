@@ -59,20 +59,21 @@ public actor NativeSpeechEngine: TranscriptionEngine {
         request.requiresOnDeviceRecognition = false 
         
         Logger.shared.info("NativeSpeechEngine: Awaiting recognitionTask completion...")
-        // Await the task block 
         return try await withCheckedThrowingContinuation { continuation in
             var hasResumed = false
             var bestStringSoFar = ""
-            
-            recognizer.recognitionTask(with: request) { result, error in
-                Logger.shared.info("NativeSpeechEngine: recognitionTask block hit. Error: \(error?.localizedDescription ?? "None"), Result: \(result != nil)")
+
+            // Capture the task so we can cancel it from the timeout handler
+            var recognitionTaskRef: SFSpeechRecognitionTask?
+
+            recognitionTaskRef = recognizer.recognitionTask(with: request) { result, error in
+                Logger.shared.debug("NativeSpeechEngine: recognitionTask block hit. Error: \(error?.localizedDescription ?? "None"), Result: \(result != nil)")
                 if let error = error {
                     if !hasResumed {
                         Logger.shared.info("NativeSpeechEngine Error: \(error.localizedDescription)")
                         hasResumed = true
-                        // Cleanup
                         try? FileManager.default.removeItem(at: fileURL)
-                        
+
                         if error.localizedDescription.localizedCaseInsensitiveContains("No speech detected") || (error as NSError).code == 201 || (error as NSError).code == 1110 || (error as NSError).code == 207 {
                             continuation.resume(returning: bestStringSoFar)
                         } else {
@@ -81,10 +82,10 @@ public actor NativeSpeechEngine: TranscriptionEngine {
                     }
                     return
                 }
-                
+
                 if let result = result {
                     bestStringSoFar = result.bestTranscription.formattedString
-                    Logger.shared.info("NativeSpeechEngine: Received result. isFinal: \(result.isFinal), String: '\(bestStringSoFar)'")
+                    Logger.shared.debug("NativeSpeechEngine: Received result. isFinal: \(result.isFinal), String: '\(bestStringSoFar)'")
                     if result.isFinal {
                         if !hasResumed {
                             Logger.shared.info("NativeSpeechEngine Final String Resuming: '\(bestStringSoFar)'")
@@ -95,12 +96,13 @@ public actor NativeSpeechEngine: TranscriptionEngine {
                     }
                 }
             }
-            
-            // Fallback timeout or aggressive return if needed
+
+            // Timeout ceiling: cancel the task first so its callback won't fire after resuming
             Task {
-                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds ceiling
+                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds
                 if !hasResumed {
-                    Logger.shared.info("NativeSpeechEngine: Timeout Reached! Returning partial: '\(bestStringSoFar)'")
+                    Logger.shared.info("NativeSpeechEngine: Timeout reached! Cancelling task, returning partial: '\(bestStringSoFar)'")
+                    recognitionTaskRef?.cancel()
                     hasResumed = true
                     try? FileManager.default.removeItem(at: fileURL)
                     continuation.resume(returning: bestStringSoFar)

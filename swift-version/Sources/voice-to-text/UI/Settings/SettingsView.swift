@@ -204,19 +204,26 @@ struct GeneralSettingsView: View {
     }
     
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+            // Sticky Header
+            VStack(alignment: .leading, spacing: 4) {
+                Text("General Settings")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.navy)
+                Text("Configure voice input, system integration, and application behavior")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 40)
+            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.8))
+            
+            Divider().background(Theme.textMuted.opacity(0.1))
+            
+            ScrollView {
             VStack(alignment: .leading, spacing: 32) {
-                
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("General Settings")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Theme.navy)
-                    Text("Configure voice input, system integration, and application behavior")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                .padding(.bottom, 8)
                 
                 // Input Configuration Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -479,6 +486,7 @@ struct GeneralSettingsView: View {
             }
             .padding(40)
             .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
+            }
         }
     }
 }
@@ -491,11 +499,12 @@ struct PostProcessingSettingsView: View {
     @AppStorage("enablePostProcessing") private var enablePostProcessing: Bool = false
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
     @AppStorage("selectedCloudProvider") private var selectedCloudProvider: String = "gemini"
+    @AppStorage("selectedLocalLLMModel") private var selectedLocalLLMModel: String = "mlx-community/Qwen2.5-7B-Instruct-4bit"
     @AppStorage("postProcessingPrompt") private var postProcessingPrompt: String = "Fix grammar and formatting. Return only the revised text."
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
-            // Header
+        VStack(alignment: .leading, spacing: 0) {
+            // Sticky Header
             VStack(alignment: .leading, spacing: 4) {
                 Text("Post-Processing Settings")
                     .font(.system(size: 24, weight: .bold))
@@ -504,15 +513,22 @@ struct PostProcessingSettingsView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textMuted)
             }
-            .padding(.bottom, 8)
+            .padding(.horizontal, 40)
+            .padding(.top, 40)
+            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.8))
             
-            // AI Post-Processing Section
-            aiPostProcessingSection
+            Divider().background(Theme.textMuted.opacity(0.1))
             
-            Spacer()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 32) {
+                    aiPostProcessingSection
+                }
+                .padding(40)
+                .padding(.bottom, 20)
+            }
         }
-        .padding(40)
-        .padding(.bottom, 20) // Add extra space at the bottom to prevent cropping
     }
     
     @ViewBuilder
@@ -570,10 +586,17 @@ struct PostProcessingSettingsView: View {
                                 selectedTaskModel = "cloud-api" 
                                 stateManager.switchPostProcessingEngine()
                             }
-                            // Future Dropdown items can go here
+                            Button("Local AI (Qwen)") {
+                                Logger.shared.debug("Settings: Changed AI Processing Model from '\(selectedTaskModel)' to 'local-llm'")
+                                selectedTaskModel = "local-llm"
+                                stateManager.switchPostProcessingEngine()
+                            }
                         } label: {
                             HStack {
-                                let display = selectedTaskModel == "apple-native" ? "Apple Intelligence" : (selectedTaskModel == "cloud-api" ? "Cloud API (Gemini/Anthropic)" : selectedTaskModel)
+                                let display = selectedTaskModel == "apple-native" ? "Apple Intelligence"
+                                    : selectedTaskModel == "cloud-api" ? "Cloud API (Gemini/Anthropic)"
+                                    : selectedTaskModel == "local-llm" ? "Local AI (Qwen)"
+                                    : selectedTaskModel
                                 Text(display)
                                     .font(.system(size: 13))
                                     .foregroundStyle(Theme.navy)
@@ -598,6 +621,11 @@ struct PostProcessingSettingsView: View {
                     .padding(16)
                     
                     appleNativeCheck
+                    
+                    if selectedTaskModel == "local-llm" {
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        localLLMSection
+                    }
                     
                     if selectedTaskModel == "cloud-api" {
                         Divider().background(Theme.textMuted.opacity(0.1))
@@ -806,7 +834,169 @@ struct PostProcessingSettingsView: View {
             }
         }
     }
-    
+
+    @ViewBuilder
+    private var localLLMSection: some View {
+        // Model size picker
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Local Model")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.navy)
+                Text("Select model size (larger = better quality, more RAM)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            Spacer()
+            Menu {
+                Button("Qwen 2.5 7B (4.3 GB, 16GB RAM)") {
+                    selectedLocalLLMModel = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+                    stateManager.switchPostProcessingEngine()
+                }
+                Button("Qwen 2.5 1.5B (1.1 GB, 8GB RAM)") {
+                    selectedLocalLLMModel = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+                    stateManager.switchPostProcessingEngine()
+                }
+                Button("Qwen 3 0.6B (0.4 GB, any Mac) — Testing") {
+                    selectedLocalLLMModel = "mlx-community/Qwen3-0.6B-4bit"
+                    stateManager.switchPostProcessingEngine()
+                }
+            } label: {
+                HStack {
+                    Text({
+                        switch selectedLocalLLMModel {
+                        case "mlx-community/Qwen2.5-1.5B-Instruct-4bit": return "Qwen 2.5 1.5B"
+                        case "mlx-community/Qwen3-0.6B-4bit": return "Qwen 3 0.6B (Test)"
+                        default: return "Qwen 2.5 7B"
+                        }
+                    }())
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.navy)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.background)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(width: 160)
+        }
+        .padding(16)
+
+        // RAM / disk warning (7B only)
+        if selectedLocalLLMModel == "mlx-community/Qwen2.5-7B-Instruct-4bit" {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Requires ~4.3 GB disk + 16 GB RAM. Model downloads once and is cached.")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
+        }
+
+        Divider().background(Theme.textMuted.opacity(0.1))
+
+        // ── Model Download / Status row ──────────────────────────────────
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: stateManager.localLLMIsDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
+                        .foregroundStyle(stateManager.localLLMIsDownloaded ? .green : Theme.navy)
+                    Text(stateManager.localLLMIsDownloaded ? "Model downloaded" : "Model not downloaded")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.navy)
+                }
+                if let progress = stateManager.localLLMDownloadProgress {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: progress)
+                            .progressViewStyle(.linear)
+                            .tint(Theme.accent)
+                            .frame(maxWidth: 240)
+                        Text(progress < 1.0
+                             ? "Downloading… \(Int(progress * 100))%"
+                             : "✅ Complete!")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                } else if !stateManager.localLLMIsDownloaded {
+                    Text("Download the model before your first use to avoid delays during dictation.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            Spacer()
+            if stateManager.localLLMDownloadProgress != nil {
+                ProgressView()
+                    .controlSize(.small)
+            } else if !stateManager.localLLMIsDownloaded {
+                Button("Download") {
+                    Task { await stateManager.preloadLocalLLMModel() }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+            }
+        }
+        .padding(16)
+
+        Divider().background(Theme.textMuted.opacity(0.1))
+
+        // ── Delete from Disk row ─────────────────────────────────────────
+        if stateManager.localLLMIsDownloaded {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Delete Model from Disk")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.navy)
+                    Text("Removes downloaded weights (~4.3 GB) from your HuggingFace cache.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                Button("Delete") {
+                    Task { await stateManager.deleteLocalLLMModel() }
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+            }
+            .padding(16)
+
+            Divider().background(Theme.textMuted.opacity(0.1))
+        }
+
+        // ── Free RAM row ─────────────────────────────────────────────────
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Free Model Memory")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.navy)
+                Text("Unload weights from RAM. Model stays on disk and reloads on next use.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            Spacer()
+            Button("Free RAM") {
+                Task { await stateManager.unloadLocalLLMEngine() }
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+        }
+        .padding(16)
+    }
+
+
+
     @ViewBuilder
     private var customPromptSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -873,8 +1063,8 @@ struct ModelSettingsView: View {
     
     var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 32) {
-                // Header
+            VStack(alignment: .leading, spacing: 0) {
+                // Sticky Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Model Settings")
                         .font(.system(size: 24, weight: .bold))
@@ -883,19 +1073,23 @@ struct ModelSettingsView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(Theme.textMuted)
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 40)
+                .padding(.top, 40)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.8))
+                
+                Divider().background(Theme.textMuted.opacity(0.1))
                 
                 // AI Model Section
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Label {
-                            Text("AI Model Local Inference")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundStyle(Theme.navy)
-                        } icon: {
-                            Image(systemName: "brain.head.profile")
-                                .foregroundStyle(Theme.navy)
-                        }
+                    Label {
+                        Text("AI Model Local Inference")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(Theme.navy)
+                    } icon: {
+                        Image(systemName: "brain.head.profile")
+                            .foregroundStyle(Theme.navy)
                     }
                     
                     ScrollView {
@@ -1081,11 +1275,11 @@ struct ModelSettingsView: View {
                     }
                 }
                 
-
                 }
+                .padding(.horizontal, 40)
+                .padding(.top, 24)
+                .padding(.bottom, 20)
             }
-            .padding([.horizontal, .top], 40)
-            .padding(.bottom, 0)
             
             // MARK: Delete Confirmation Overlay
             if let title = modelToDeleteTitle, let action = modelDeleteAction {

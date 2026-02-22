@@ -1,93 +1,107 @@
 import Foundation
 import SwiftUI
 
-class Logger {
-    static let shared = Logger()
-    
-    private let logFileURL: URL
+// MARK: - Shared log directory
+
+private let vocaGlyphLogsDir: URL = {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let dir = home.appendingPathComponent(".VocaGlyph").appendingPathComponent("logs")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}()
+
+// MARK: - LogFile (reusable file-writing core)
+
+/// A thread-safe, append-only log file.
+private final class LogFile: @unchecked Sendable {
+    let url: URL
+    private let queue: DispatchQueue
     private let dateFormatter: DateFormatter
-    private let logQueue = DispatchQueue(label: "com.vocaglyph.logger", qos: .utility)
-    
-    private init() {
-        // Setup Date Formatter
+
+    init(filename: String, queueLabel: String) {
+        url = vocaGlyphLogsDir.appendingPathComponent(filename)
+        queue = DispatchQueue(label: queueLabel, qos: .utility)
         dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        
-        // Setup Log Directory: ~/.VocaGlyph/logs/
-        let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
-        let vocaGlyphDir = homeDirectory.appendingPathComponent(".VocaGlyph")
-        let logsDir = vocaGlyphDir.appendingPathComponent("logs")
-        
-        do {
-            try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            print("CRITICAL: Failed to create log directory: \(error)")
+
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
         }
-        
-        logFileURL = logsDir.appendingPathComponent("vocaglyph.log")
-        
-        // Create file if it doesn't exist
-        if !FileManager.default.fileExists(atPath: logFileURL.path) {
-            FileManager.default.createFile(atPath: logFileURL.path, contents: nil, attributes: nil)
-        }
-        
-        self.info("=== Application Started ===")
     }
-    
-    func info(_ message: String) {
-        log(level: "INFO ", message: message)
-    }
-    
-    func error(_ message: String) {
-        log(level: "ERROR", message: message)
-    }
-    
-    func debug(_ message: String) {
-        log(level: "DEBUG", message: message)
-    }
-    
-    @AppStorage("enableDebugLogging") private var isDebugEnabled: Bool = false
-    
-    private func log(level: String, message: String) {
+
+    func write(level: String, message: String) {
         let timestamp = dateFormatter.string(from: Date())
-        let formattedMessage = "[\(timestamp)] [\(level)] \(message)\n"
-        
-        // Always Print to Xcode console/Terminal for local developer debugging
-        print(formattedMessage, terminator: "")
-        
-        // Write persistently to disk ONLY if enabled
-        guard UserDefaults.standard.bool(forKey: "enableDebugLogging") else { return }
-        
-        guard let data = formattedMessage.data(using: .utf8) else { return }
-        
-        logQueue.async {
+        let line = "[\(timestamp)] [\(level)] \(message)\n"
+
+        // DEBUG is gated behind the debug-logging flag; INFO and ERROR always surface
+        let isDebug = level == "DEBUG"
+        let debugEnabled = UserDefaults.standard.bool(forKey: "enableDebugLogging")
+        guard !isDebug || debugEnabled else { return }
+
+        // Print to console
+        print(line, terminator: "")
+
+        // Write to disk
+        guard let data = line.data(using: .utf8) else { return }
+        queue.async { [url] in
             do {
-                let fileHandle = try FileHandle(forWritingTo: self.logFileURL)
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
+                let fh = try FileHandle(forWritingTo: url)
+                fh.seekToEndOfFile()
+                fh.write(data)
+                fh.closeFile()
             } catch {
-                print("CRITICAL: Failed to write to log file: \(error)")
+                print("CRITICAL: Failed to write to \(url.lastPathComponent): \(error)")
             }
         }
     }
-    
-    /// Clears the current log file
-    public func clearLogs() {
-        logQueue.async { [weak self] in
-            guard let self = self else { return }
-            do {
-                if FileManager.default.fileExists(atPath: self.logFileURL.path) {
-                    try FileManager.default.removeItem(at: self.logFileURL)
-                }
-            } catch {
-                print("Failed to clear log file: \(error)")
-            }
+
+    func clear() {
+        queue.async { [url] in
+            try? FileManager.default.removeItem(at: url)
         }
     }
-    
-    /// Returns the URL of the log file so the UI can open it in Finder
-    public func getLogFileURL() -> URL {
-        return logFileURL
+}
+
+// MARK: - Logger (general app + transcription logs → vocaglyph.log)
+
+class Logger {
+    static let shared = Logger()
+
+    private let file = LogFile(
+        filename: "vocaglyph.log",
+        queueLabel: "com.vocaglyph.logger"
+    )
+
+    private init() {
+        info("=== Application Started ===")
     }
+
+    func info(_ message: String)  { file.write(level: "INFO ", message: message) }
+    func error(_ message: String) { file.write(level: "ERROR", message: message) }
+    func debug(_ message: String) { file.write(level: "DEBUG", message: message) }
+
+    func clearLogs() { file.clear() }
+    func getLogFileURL() -> URL  { file.url }
+}
+
+// MARK: - PostProcessingLogger (API / local-model logs → postprocessing.log)
+
+/// Dedicated logger for post-processing engines.
+/// Writes to `~/.VocaGlyph/logs/postprocessing.log` independently of the main log.
+class PostProcessingLogger {
+    static let shared = PostProcessingLogger()
+
+    private let file = LogFile(
+        filename: "postprocessing.log",
+        queueLabel: "com.vocaglyph.postprocessing.logger"
+    )
+
+    private init() {}
+
+    func info(_ message: String)  { file.write(level: "INFO ", message: message) }
+    func error(_ message: String) { file.write(level: "ERROR", message: message) }
+    func debug(_ message: String) { file.write(level: "DEBUG", message: message) }
+
+    func clearLogs() { file.clear() }
+    func getLogFileURL() -> URL  { file.url }
 }
