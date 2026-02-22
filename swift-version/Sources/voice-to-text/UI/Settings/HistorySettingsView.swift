@@ -15,6 +15,7 @@ struct HistorySettingsView: View {
     @State private var searchText = ""
     @State private var activeMenu: HistoryMenuState? = nil
     @State private var itemToDelete: TranscriptionItem? = nil
+    @State private var showClearAllConfirmation = false
     @State private var isSearchExpanded = false
     @FocusState private var isSearchFocused: Bool
 
@@ -123,6 +124,29 @@ struct HistorySettingsView: View {
                             .stroke(isSearchExpanded ? Theme.navy.opacity(0.35) : Theme.textMuted.opacity(0.2), lineWidth: 1)
                     )
                     .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchExpanded)
+
+                    // Clear all button — only visible when there are items
+                    if !items.isEmpty {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showClearAllConfirmation = true
+                            }
+                        }) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Clear All History")
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
+                        )
+                    }
                 }
                 .padding(.horizontal, 40)
                 .padding(.top, 40)
@@ -250,9 +274,41 @@ struct HistorySettingsView: View {
                 )
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
+
+            // MARK: Clear All Confirmation Overlay
+            if showClearAllConfirmation {
+                Color.black.opacity(0.15)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showClearAllConfirmation = false
+                        }
+                    }
+
+                CustomConfirmationDialog(
+                    title: "Clear all transcription history?",
+                    message: "This will permanently delete all transcriptions and cannot be undone.",
+                    confirmTitle: "Yes, clear all",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            clearAllItems()
+                            showClearAllConfirmation = false
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showClearAllConfirmation = false
+                        }
+                    }
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
         }
         .coordinateSpace(name: "historyView")
         .animation(.easeInOut(duration: 0.2), value: itemToDelete != nil)
+        .animation(.easeInOut(duration: 0.2), value: showClearAllConfirmation)
     }
 
     private func copyToClipboard(text: String) {
@@ -263,6 +319,13 @@ struct HistorySettingsView: View {
 
     private func deleteItem(_ item: TranscriptionItem) {
         modelContext.delete(item)
+        try? modelContext.save()
+    }
+
+    private func clearAllItems() {
+        for item in items {
+            modelContext.delete(item)
+        }
         try? modelContext.save()
     }
 }
