@@ -15,6 +15,8 @@ struct HistorySettingsView: View {
     @State private var searchText = ""
     @State private var activeMenu: HistoryMenuState? = nil
     @State private var itemToDelete: TranscriptionItem? = nil
+    @State private var isSearchExpanded = false
+    @FocusState private var isSearchFocused: Bool
 
     var filteredItems: [TranscriptionItem] {
         if searchText.isEmpty {
@@ -52,40 +54,78 @@ struct HistorySettingsView: View {
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 32) {
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Transcription History")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(Theme.navy)
-                    Text("Manage and review your recent dictations")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.textMuted)
+                // Header row with inline search
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Transcription History")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(Theme.navy)
+                        Text("Manage and review your recent dictations")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Compact / expanding search box
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(isSearchExpanded ? Theme.navy : Theme.textMuted)
+                            .font(.system(size: 13, weight: .medium))
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    isSearchExpanded = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    isSearchFocused = true
+                                }
+                            }
+
+                        if isSearchExpanded {
+                            TextField("Search...", text: $searchText)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.navy)
+                                .tint(Theme.navy)
+                                .focused($isSearchFocused)
+                                .frame(width: 160)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .onChange(of: isSearchFocused) { _, focused in
+                                    if !focused && searchText.isEmpty {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            isSearchExpanded = false
+                                        }
+                                    }
+                                }
+
+                            if !searchText.isEmpty {
+                                Button(action: {
+                                    searchText = ""
+                                    isSearchFocused = false
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        isSearchExpanded = false
+                                    }
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(Theme.textMuted)
+                                        .font(.system(size: 13))
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .transition(.opacity)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, isSearchExpanded ? 10 : 8)
+                    .padding(.vertical, 7)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSearchExpanded ? Theme.navy.opacity(0.35) : Theme.textMuted.opacity(0.2), lineWidth: 1)
+                    )
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchExpanded)
                 }
                 .padding(.horizontal, 40)
                 .padding(.top, 40)
-
-                // Search Bar
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(Theme.textMuted)
-                    TextField("Search history...", text: $searchText)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .font(.system(size: 14))
-                        .foregroundStyle(Theme.navy)
-                        .tint(Theme.navy)
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(Theme.textMuted)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(10)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
-                .padding(.horizontal, 40)
 
                 if filteredItems.isEmpty {
                     VStack {
@@ -146,10 +186,16 @@ struct HistorySettingsView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Dismiss menu on background tap
+            // Dismiss menu and search box on background tap
             .contentShape(Rectangle())
             .onTapGesture {
                 if activeMenu != nil { activeMenu = nil }
+                if isSearchExpanded && searchText.isEmpty {
+                    isSearchFocused = false
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        isSearchExpanded = false
+                    }
+                }
             }
 
             // MARK: Floating action menu overlay
