@@ -31,22 +31,35 @@ enum GlobalShortcutOption: String, CaseIterable, Identifiable {
 class HotkeyService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    
+
     private var targetKeyCode: CGKeyCode = 8
     private var targetFlags: CGEventFlags = [.maskControl, .maskShift]
-    
+
     private let stateManager: AppStateManager
-    private let canRecordCallback: () -> Bool
+
+    // --- Re-entry guards (accessed only on the CGEvent callback thread) ---
+    // isRecording: true from first keyDown until resetToIdle() fires on main thread.
     private var isRecording = false
-    
-    init(stateManager: AppStateManager, canRecordCallback: @escaping () -> Bool) {
+    // lastActivationTime: absolute time of the most recent recording start.
+    // Debounce window prevents rapid re-triggers caused by audio engine startup
+    // latency (~100 ms), where sub-threshold presses always capture 0 frames.
+    private var lastActivationTime: CFAbsoluteTime = 0
+    private let debounceInterval: CFAbsoluteTime = 0.2  // 200 ms
+
+    init(stateManager: AppStateManager) {
         self.stateManager = stateManager
-        self.canRecordCallback = canRecordCallback
-        
+
         loadShortcutFromDefaults()
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.loadShortcutFromDefaults()
         }
+    }
+
+    /// Called by AppDelegate when AppState returns to .idle.
+    /// Resets the re-entry guard so the next hotkey press is accepted.
+    /// Must be called on the main thread.
+    func resetToIdle() {
+        isRecording = false
     }
     
     private func loadShortcutFromDefaults() {
@@ -118,33 +131,35 @@ class HotkeyService {
         
         if keyCode == targetKeyCode {
             if type == .keyDown && matchesMask {
-                if !isRecording {
-                    guard canRecordCallback() else {
-                        NSSound.beep()
-                        return nil // Consume event
-                    }
-                    
+                let now = CFAbsoluteTimeGetCurrent()
+                let withinDebounce = (now - lastActivationTime) < debounceInterval
+
+                // Block re-entry if already recording OR if within the debounce window.
+                // The debounce guards against the audio engine startup latency: the engine
+                // needs ~100 ms to deliver its first buffer, so presses shorter than that
+                // always capture 0 frames and we shouldn't immediately allow another start.
+                if !isRecording && !withinDebounce {
                     isRecording = true
+                    lastActivationTime = now
                     DispatchQueue.main.async {
                         self.stateManager.startRecording()
                     }
                 }
                 return nil // Consume event
             } else if type == .keyUp {
-                // If it's keyUp and we are recording, stop it immediately, regardless of whether modifiers are still held
+                // Stop only if we actually started a recording in this press cycle.
                 if isRecording {
-                    isRecording = false
+                    // Don't clear isRecording here — keep it true until the app
+                    // is fully idle (resetToIdle() is called from AppDelegate).
+                    // This prevents a new keyDown from sneaking in while processing.
                     DispatchQueue.main.async {
                         self.stateManager.stopRecording()
                     }
-                    // Consume the event to prevent system from handling the orphaned keyUp
                     return nil
                 }
-                
-                // If we aren't recording but the keys match perfectly, consume it anyway
-                if matchesMask {
-                    return nil
-                }
+
+                // Consume matching keyUp even if we weren't recording
+                if matchesMask { return nil }
             }
         }
         

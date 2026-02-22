@@ -3,93 +3,149 @@ import Foundation
 
 class AudioRecorderService {
     private let engine = AVAudioEngine()
-    
-    // The target format required by WhisperKit: 16Khz, 1 channel (mono), 32-bit Float
+
+    // The target format required by WhisperKit: 16kHz, 1 channel (mono), 32-bit Float
     private let targetSampleRate: Double = 16000.0
     private var converter: AVAudioConverter?
-    
-    // Memory buffer to hold incoming audio data
+
+    // Thread-safe buffer: appended from the audio tap thread, read on any thread.
+    // Using a dedicated serial queue + NSLock ensures stopRecording() drains
+    // cleanly even when pending tap callbacks are still in-flight.
     private var recordedData: [Float] = []
-    
+    private let bufferLock = NSLock()
+    private let bufferQueue = DispatchQueue(label: "com.vocaglyph.audioBuffer", qos: .userInteractive)
+
     init() {
         requestPermissions()
     }
-    
+
     private func requestPermissions() {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
-            print("Microphone access ready.")
+            Logger.shared.info("Microphone access ready.")
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { granted in
-                print("Microphone access granted: \(granted)")
+                Logger.shared.info("Microphone access granted: \(granted)")
             }
         default:
-            print("Microphone access denied or restricted.")
+            Logger.shared.info("Microphone access denied or restricted.")
         }
     }
-    
-    func startRecording() {
+
+    // MARK: - startRecording
+    // Throws if the audio engine cannot be started so that callers can
+    // immediately reset state rather than silently hanging.
+    func startRecording() throws {
+        // 1. Reset accumulated data
+        bufferLock.lock()
         recordedData.removeAll()
-        
-        // Ensure engine is stopped before configuring
+        bufferLock.unlock()
+
+        // 2. Tear down any previous session completely before reconfiguring.
+        //    Always remove an existing tap first — re-installing without removing
+        //    causes a silent failure that leaves no audio captured.
         if engine.isRunning {
             engine.stop()
         }
-        
+        engine.inputNode.removeTap(onBus: 0)
+
         let inputNode = engine.inputNode
         let inputFormat = inputNode.inputFormat(forBus: 0)
-        
-        // Define the target format: 16kHz, 1 channel, 32-bit Float, non-interleaved
+
+        // 3. Build the target 16 kHz mono format
         guard let outputFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: targetSampleRate,
             channels: 1,
             interleaved: false
         ) else {
-            print("Error: Could not create 16kHz output format.")
-            return
+            throw AudioRecorderError.formatCreationFailed
         }
-        
-        // Create an audio converter
+
         converter = AVAudioConverter(from: inputFormat, to: outputFormat)
-        
-        print("Starting recording... Input format: \(inputFormat)")
-        
-        // Install a tap on the input node
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] (buffer, time) in
-            guard let self = self else { return }
-            self.processBuffer(buffer: buffer)
+
+        Logger.shared.info("AudioRecorder: Starting — input format: \(inputFormat)")
+
+        // 4. Install tap. The tap callback is called on a private audio thread;
+        //    we hand the work to our serial bufferQueue to avoid blocking it.
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+            self?.bufferQueue.async { self?.processBuffer(buffer: buffer) }
         }
-        
-        // Prepare and start the engine
+
+        // 5. Start engine — throw on failure so callers know immediately.
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            print("Failed to start audio engine: \(error.localizedDescription)")
+            // Clean up the tap we just installed so the next attempt starts fresh.
+            engine.inputNode.removeTap(onBus: 0)
+            Logger.shared.error("AudioRecorder: Failed to start engine — \(error.localizedDescription)")
+            throw error
         }
     }
-    
+
+    // MARK: - stopRecording
+    // Stops the engine + tap, then waits for any in-flight buffer appends to
+    // finish (by synchronously draining bufferQueue) before assembling the
+    // final PCM buffer.
+    func stopRecording() -> AVAudioPCMBuffer? {
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+
+        // Drain any pending buffer appends that were dispatched before we
+        // removed the tap.  sync{} blocks until the queue is empty.
+        bufferQueue.sync {}
+
+        bufferLock.lock()
+        let data = recordedData
+        recordedData.removeAll()
+        bufferLock.unlock()
+
+        Logger.shared.info("AudioRecorder: Stopped — captured \(data.count) frames at 16 kHz")
+
+        guard !data.isEmpty else { return nil }
+
+        guard let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: targetSampleRate,
+            channels: 1,
+            interleaved: false
+        ) else { return nil }
+
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(data.count)) else {
+            return nil
+        }
+
+        buffer.frameLength = buffer.frameCapacity
+        if let channelData = buffer.floatChannelData {
+            data.withUnsafeBufferPointer { src in
+                channelData[0].update(from: src.baseAddress!, count: data.count)
+            }
+        }
+
+        return buffer
+    }
+
+    // MARK: - Private helpers
+
     private func processBuffer(buffer: AVAudioPCMBuffer) {
-        // If the sample rate already matches and it's mono, we can copy directly
+        // Fast path: already in the right format
         if buffer.format.sampleRate == targetSampleRate && buffer.format.channelCount == 1 {
-            self.appendBufferData(buffer)
+            appendBufferData(buffer)
             return
         }
         guard let converter = self.converter else { return }
         let targetFormat = converter.outputFormat
-        
-        // Calculate the exact exact frame capacity needed to hold the converted buffer
-        let capacity = AVAudioFrameCount(Double(buffer.frameCapacity) * (targetFormat.sampleRate / buffer.format.sampleRate))
-        
-        guard let targetBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
-            return
-        }
-        
-        var error: NSError? = nil
+
+        let capacity = AVAudioFrameCount(
+            Double(buffer.frameCapacity) * (targetFormat.sampleRate / buffer.format.sampleRate)
+        )
+        guard let targetBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
+
         var hasProvidedData = false
-        
-        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+        var conversionError: NSError?
+
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
             if hasProvidedData {
                 outStatus.pointee = .noDataNow
                 return nil
@@ -98,55 +154,36 @@ class AudioRecorderService {
             outStatus.pointee = .haveData
             return buffer
         }
-        
-        let status = converter.convert(to: targetBuffer, error: &error, withInputFrom: inputBlock)
-        
-        if status == .error || error != nil {
-            print("Error converting buffer: \(error?.localizedDescription ?? "Unknown error")")
+
+        let status = converter.convert(to: targetBuffer, error: &conversionError, withInputFrom: inputBlock)
+        guard status != .error, conversionError == nil else {
+            Logger.shared.error("AudioRecorder: Buffer conversion failed — \(conversionError?.localizedDescription ?? "unknown")")
             return
         }
-        
-        self.appendBufferData(targetBuffer)
+
+        appendBufferData(targetBuffer)
     }
-    
+
+    // Called exclusively from bufferQueue — lock guards against concurrent
+    // access with stopRecording() which reads on the calling thread.
     private func appendBufferData(_ buffer: AVAudioPCMBuffer) {
         guard let floatChannelData = buffer.floatChannelData else { return }
-        
         let frameLength = Int(buffer.frameLength)
-        let channelData = UnsafeBufferPointer(start: floatChannelData[0], count: frameLength)
-        
-        // Append synchronously to avoid race conditions with stopRecording
-        DispatchQueue.main.async {
-            self.recordedData.append(contentsOf: Array(channelData))
-        }
+        let slice = Array(UnsafeBufferPointer(start: floatChannelData[0], count: frameLength))
+
+        bufferLock.lock()
+        recordedData.append(contentsOf: slice)
+        bufferLock.unlock()
     }
-    
-    func stopRecording() -> AVAudioPCMBuffer? {
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        
-        print("Stopped recording. Captured \(recordedData.count) frames at 16kHz.")
-        
-        guard !recordedData.isEmpty else { return nil }
-        
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: targetSampleRate,
-            channels: 1,
-            interleaved: false
-        ) else { return nil }
-        
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(recordedData.count)) else {
-            return nil
+}
+
+// MARK: - Errors
+enum AudioRecorderError: Error, LocalizedError {
+    case formatCreationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .formatCreationFailed: return "Could not create 16 kHz output format"
         }
-        
-        buffer.frameLength = buffer.frameCapacity
-        if let floatChannelData = buffer.floatChannelData {
-            for i in 0..<recordedData.count {
-                floatChannelData[0][i] = recordedData[i]
-            }
-        }
-        
-        return buffer
     }
 }

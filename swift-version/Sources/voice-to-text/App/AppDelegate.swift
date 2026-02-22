@@ -80,10 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         stateManager.engineRouter = EngineRouter(engine: whisper) // initial default
         stateManager.startEngine() // Boot up whatever model is selected in UserDefaults
         output = OutputService()
-        hotkeyService = HotkeyService(stateManager: stateManager) { [weak self] in
-            // Allow recording if App is idle. This covers both WhisperKit (ready) and Apple Native.
-            return self?.stateManager.currentState == .idle
-        }
+        hotkeyService = HotkeyService(stateManager: stateManager)
         hotkeyService.start()
         
         // Setup Settings Window
@@ -177,6 +174,8 @@ extension AppDelegate: AppStateManagerDelegate {
         
         switch newState {
         case .idle:
+            // Let HotkeyService know it can accept the next hotkey press.
+            hotkeyService.resetToIdle()
             if let imgUrl = Bundle.module.url(forResource: "appbaricon", withExtension: "png"),
                let nsImage = NSImage(contentsOf: imgUrl) {
                 nsImage.size = NSSize(width: 18, height: 18)
@@ -193,14 +192,20 @@ extension AppDelegate: AppStateManagerDelegate {
             let img = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "recording")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
             button?.image = img?.withSymbolConfiguration(config)
-            
-            // Start capturing audio into 16Khz Float array
-            audioRecorder.startRecording()
+
+            // Start capturing audio. startRecording() now throws on engine
+            // failure so we can reset state immediately rather than hanging.
+            do {
+                try audioRecorder.startRecording()
+            } catch {
+                Logger.shared.error("AppDelegate: audioRecorder.startRecording() failed — \(error.localizedDescription). Resetting to idle.")
+                stateManager.setIdle()
+            }
         case .processing:
             let img = NSImage(systemSymbolName: "hourglass.circle.fill", accessibilityDescription: "processing")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
             button?.image = img?.withSymbolConfiguration(config)
-            
+
             // Stop capturing audio
             if let buffer = audioRecorder.stopRecording() {
                 print("Finished capturing audio segment.")
