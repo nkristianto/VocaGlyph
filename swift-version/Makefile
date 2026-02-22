@@ -8,7 +8,7 @@ MACOS_DIR=$(APP_BUNDLE)/Contents/MacOS
 RESOURCES_DIR=$(APP_BUNDLE)/Contents/Resources
 
 # App icon source
-ICON_SRC=../swift-version/Sources/VocaGlyph/Resources/appicon.png
+ICON_SRC=Sources/VocaGlyph/Resources/appicon.png
 ICONSET_DIR=$(BUILD_DIR)/AppIcon.iconset
 ICNS_FILE=$(BUILD_DIR)/AppIcon.icns
 
@@ -24,9 +24,17 @@ MLX_METALLIB=$(BUILD_DIR)/mlx.metallib
 # MLX looks for mlx.metallib co-located with the binary (Contents/MacOS/)
 metallib: $(MLX_METALLIB)
 
-$(MLX_METALLIB): $(wildcard $(MLX_METAL_DIR)/*.metal)
+$(MLX_METALLIB):
+	@echo "Resolving SPM packages to populate MLX checkouts..."
+	@swift package resolve --build-path $(BUILD_DIR)
 	@echo "Compiling MLX Metal shaders..."
 	@mkdir -p $(MLX_AIR_DIR)
+	@shopt -s nullglob; files=($(MLX_METAL_DIR)/*.metal); \
+	if [ $${#files[@]} -eq 0 ]; then \
+		echo "ERROR: No .metal files found in $(MLX_METAL_DIR)"; \
+		echo "  Ensure mlx-swift was resolved correctly."; \
+		exit 1; \
+	fi
 	@for f in $(MLX_METAL_DIR)/*.metal; do \
 		name=$$(basename $$f .metal); \
 		xcrun metal -std=metal3.1 -O2 -I "$(MLX_INCLUDE_DIR)" -c "$$f" -o "$(MLX_AIR_DIR)/$$name.air"; \
