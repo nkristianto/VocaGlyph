@@ -119,11 +119,15 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 self.postProcessingEngine = GeminiEngine()
             }
         } else if selectedPostModel == "apple-native" {
-            if #available(macOS 15.1, *) {
+            if #available(macOS 26.0, *) {
+                // Foundation Models framework is available — use the real on-device Apple Intelligence engine.
+                Logger.shared.info("AppStateManager: macOS 26+ detected — using real AppleIntelligenceEngine (Foundation Models)")
                 self.postProcessingEngine = AppleIntelligenceEngine()
             } else {
-                Logger.shared.info("AppStateManager: Apple Intelligence selected but requires macOS 15.1+")
-                self.postProcessingEngine = nil
+                // Foundation Models framework is not available on macOS 15.x.
+                // Use a stub that throws a descriptive error so the orchestrator can log it clearly.
+                Logger.shared.info("AppStateManager: macOS < 26 detected — Foundation Models unavailable, using legacy stub")
+                self.postProcessingEngine = AppleIntelligenceLegacyStub()
             }
         } else if selectedPostModel == "local-llm" {
             let selectedLocalModel = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
@@ -206,7 +210,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                     finalText = refined
                 } catch let error as AppleIntelligenceError {
                     let engineName = type(of: postProcessor)
-                    Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription) (Apple Intelligence programmatic API is not yet publicly available). Using raw transcription.")
+                    Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription). Using raw transcription.")
                 } catch {
                     let engineName = type(of: postProcessor)
                     Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription). Using raw transcription.")
