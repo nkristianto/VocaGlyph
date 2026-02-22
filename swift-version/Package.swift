@@ -4,15 +4,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "voice-to-text",
+    name: "VocaGlyph",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .executable(
-            name: "voice-to-text",
-            targets: ["voice-to-text"]),
+            name: "VocaGlyph",
+            targets: ["VocaGlyph"]),
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
@@ -22,7 +22,7 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
-            name: "voice-to-text",
+            name: "VocaGlyph",
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
@@ -33,8 +33,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "voice-to-textTests",
-            dependencies: ["voice-to-text"]
+            name: "VocaGlyphTests",
+            dependencies: ["VocaGlyph"]
         ),
     ]
 )
