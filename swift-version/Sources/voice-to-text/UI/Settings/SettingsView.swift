@@ -15,6 +15,7 @@ extension Binding {
 }
 
 enum SettingsTab: Hashable {
+    case history
     case general
     case model
     case postProcessing
@@ -42,6 +43,8 @@ struct SettingsView: View {
                 Color.white.opacity(0.8) // Whiter main area
                 
                 switch selectedTab {
+                case .history:
+                    HistorySettingsView()
                 case .general:
                     GeneralSettingsView(whisper: whisper, stateManager: stateManager)
                 case .model:
@@ -104,6 +107,7 @@ struct CustomSidebar: View {
             // Navigation Links
             VStack(spacing: 4) {
                 SidebarItemView(title: "General", icon: "gearshape.fill", tab: .general, selectedTab: $selectedTab)
+                SidebarItemView(title: "History", icon: "clock.arrow.circlepath", tab: .history, selectedTab: $selectedTab)
                 SidebarItemView(title: "Model", icon: "brain.head.profile", tab: .model, selectedTab: $selectedTab)
                 SidebarItemView(title: "Post-Processing", icon: "wand.and.stars", tab: .postProcessing, selectedTab: $selectedTab)
             }
@@ -486,6 +490,7 @@ struct PostProcessingSettingsView: View {
     
     @AppStorage("enablePostProcessing") private var enablePostProcessing: Bool = false
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
+    @AppStorage("selectedCloudProvider") private var selectedCloudProvider: String = "gemini"
     @AppStorage("postProcessingPrompt") private var postProcessingPrompt: String = "Fix grammar and formatting. Return only the revised text."
     
     var body: some View {
@@ -597,6 +602,55 @@ struct PostProcessingSettingsView: View {
                     if selectedTaskModel == "cloud-api" {
                         Divider().background(Theme.textMuted.opacity(0.1))
                         
+                        // Cloud Provider Selection
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cloud Provider")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Select the external AI service to use")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Menu {
+                                Button("Google Gemini") { 
+                                    Logger.shared.debug("Settings: Changed Cloud Provider from '\(selectedCloudProvider)' to 'gemini'")
+                                    selectedCloudProvider = "gemini" 
+                                    stateManager.switchPostProcessingEngine()
+                                }
+                                Button("Anthropic Claude") { 
+                                    Logger.shared.debug("Settings: Changed Cloud Provider from '\(selectedCloudProvider)' to 'anthropic'")
+                                    selectedCloudProvider = "anthropic" 
+                                    stateManager.switchPostProcessingEngine()
+                                }
+                            } label: {
+                                HStack {
+                                    Text(selectedCloudProvider == "anthropic" ? "Anthropic Claude" : "Google Gemini")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.navy)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.background)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 160)
+                        }
+                        .padding(16)
+                        
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
                         // Error Message Display
                         errorDisplaySection
                         
@@ -629,103 +683,107 @@ struct PostProcessingSettingsView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textMuted)
                 
-            // Anthropic Key Field
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Anthropic API Key")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.navy)
-                
-                HStack(spacing: 8) {
-                    SecureField(viewModel.isAnthropicKeySaved ? "sk-ant-... (Saved in Keychain)" : "sk-ant-...", text: $viewModel.anthropicApiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
+            if selectedCloudProvider == "anthropic" {
+                // Anthropic Key Field
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Anthropic API Key")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.navy)
                     
-                    Button(action: {
-                        if let clipboardStr = NSPasteboard.general.string(forType: .string) {
-                            viewModel.anthropicApiKey = clipboardStr
-                        }
-                    }) {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Paste from clipboard")
-                    
-                    if viewModel.isAnthropicKeySaved {
-                        Button(action: {
-                            Task { @MainActor in await viewModel.deleteAnthropicKey() }
-                        }) {
-                            Text("Delete")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
+                    HStack(spacing: 8) {
+                        SecureField(viewModel.isAnthropicKeySaved ? "sk-ant-... (Saved in Keychain)" : "sk-ant-...", text: $viewModel.anthropicApiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, design: .monospaced))
                         
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                            .help("Key is securely stored in Keychain")
-                    } else {
                         Button(action: {
-                            Task { @MainActor in await viewModel.saveAnthropicKey() }
+                            if let clipboardStr = NSPasteboard.general.string(forType: .string) {
+                                viewModel.anthropicApiKey = clipboardStr
+                            }
                         }) {
-                            Text("Save Securely")
-                                .font(.system(size: 12, weight: .medium))
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 12))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.anthropicApiKey.isEmpty)
+                        .buttonStyle(.plain)
+                        .help("Paste from clipboard")
+                        
+                        if viewModel.isAnthropicKeySaved {
+                            Button(action: {
+                                Task { @MainActor in await viewModel.deleteAnthropicKey() }
+                            }) {
+                                Text("Delete")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                            
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .help("Key is securely stored in Keychain")
+                        } else {
+                            Button(action: {
+                                Task { @MainActor in await viewModel.saveAnthropicKey() }
+                            }) {
+                                Text("Save Securely")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(viewModel.anthropicApiKey.isEmpty)
+                        }
                     }
                 }
+                .padding(.top, 8)
             }
-            .padding(.top, 8)
             
-            // Gemini Key Field
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Gemini API Key")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.navy)
-                
-                HStack(spacing: 8) {
-                    SecureField(viewModel.isGeminiKeySaved ? "AIzaSy... (Saved in Keychain)" : "AIzaSy...", text: $viewModel.geminiApiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
+            if selectedCloudProvider == "gemini" {
+                // Gemini Key Field
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Gemini API Key")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.navy)
                     
-                    Button(action: {
-                        if let clipboardStr = NSPasteboard.general.string(forType: .string) {
-                            viewModel.geminiApiKey = clipboardStr
-                        }
-                    }) {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 12))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Paste from clipboard")
-                    
-                    if viewModel.isGeminiKeySaved {
-                        Button(action: {
-                            Task { @MainActor in await viewModel.deleteGeminiKey() }
-                        }) {
-                            Text("Delete")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
+                    HStack(spacing: 8) {
+                        SecureField(viewModel.isGeminiKeySaved ? "AIzaSy... (Saved in Keychain)" : "AIzaSy...", text: $viewModel.geminiApiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, design: .monospaced))
                         
-                        Image(systemName: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                            .help("Key is securely stored in Keychain")
-                    } else {
                         Button(action: {
-                            Task { @MainActor in await viewModel.saveGeminiKey() }
+                            if let clipboardStr = NSPasteboard.general.string(forType: .string) {
+                                viewModel.geminiApiKey = clipboardStr
+                            }
                         }) {
-                            Text("Save Securely")
-                                .font(.system(size: 12, weight: .medium))
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 12))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(viewModel.geminiApiKey.isEmpty)
+                        .buttonStyle(.plain)
+                        .help("Paste from clipboard")
+                        
+                        if viewModel.isGeminiKeySaved {
+                            Button(action: {
+                                Task { @MainActor in await viewModel.deleteGeminiKey() }
+                            }) {
+                                Text("Delete")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red)
+                            
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(.green)
+                                .help("Key is securely stored in Keychain")
+                        } else {
+                            Button(action: {
+                                Task { @MainActor in await viewModel.saveGeminiKey() }
+                            }) {
+                                Text("Save Securely")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(viewModel.geminiApiKey.isEmpty)
+                        }
                     }
                 }
+                .padding(.top, 4)
             }
-            .padding(.top, 4)
         }
         .padding(16)
         .background(Color.white)
@@ -810,8 +868,12 @@ struct ModelSettingsView: View {
     @AppStorage("selectedModel") private var selectedModel: String = "apple-native"
     @State private var focusedModel: String = "apple-native"
     
+    @State private var modelToDeleteTitle: String? = nil
+    @State private var modelDeleteAction: (() -> Void)? = nil
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 32) {
+        ZStack {
+            VStack(alignment: .leading, spacing: 32) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Model Settings")
@@ -859,7 +921,7 @@ struct ModelSettingsView: View {
                                     }
                                 },
                                 onDownload: {},
-                                onDelete: nil
+                                onDeleteRequest: nil
                             )
                         }
                             
@@ -885,8 +947,11 @@ struct ModelSettingsView: View {
                             onDownload: {
                                 whisper.downloadModel("tiny")
                             },
-                            onDelete: {
-                                whisper.deleteModel("tiny")
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Tiny"
+                                    modelDeleteAction = { whisper.deleteModel("tiny") }
+                                }
                             }
                         )
                         
@@ -912,8 +977,11 @@ struct ModelSettingsView: View {
                             onDownload: {
                                 whisper.downloadModel("base")
                             },
-                            onDelete: {
-                                whisper.deleteModel("base")
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Base"
+                                    modelDeleteAction = { whisper.deleteModel("base") }
+                                }
                             }
                         )
                         
@@ -939,8 +1007,11 @@ struct ModelSettingsView: View {
                             onDownload: {
                                 whisper.downloadModel("base.en")
                             },
-                            onDelete: {
-                                whisper.deleteModel("base.en")
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Base (English Only)"
+                                    modelDeleteAction = { whisper.deleteModel("base.en") }
+                                }
                             }
                         )
                         
@@ -966,8 +1037,11 @@ struct ModelSettingsView: View {
                             onDownload: {
                                 whisper.downloadModel("small")
                             },
-                            onDelete: {
-                                whisper.deleteModel("small")
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Small"
+                                    modelDeleteAction = { whisper.deleteModel("small") }
+                                }
                             }
                         )
                         
@@ -993,8 +1067,11 @@ struct ModelSettingsView: View {
                             onDownload: {
                                 whisper.downloadModel("distil-large-v3")
                             },
-                            onDelete: {
-                                whisper.deleteModel("distil-large-v3")
+                            onDeleteRequest: {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    modelToDeleteTitle = "Distil Large v3"
+                                    modelDeleteAction = { whisper.deleteModel("distil-large-v3") }
+                                }
                             }
                         )
                     }
@@ -1009,6 +1086,42 @@ struct ModelSettingsView: View {
             }
             .padding([.horizontal, .top], 40)
             .padding(.bottom, 0)
+            
+            // MARK: Delete Confirmation Overlay
+            if let title = modelToDeleteTitle, let action = modelDeleteAction {
+                Color.black.opacity(0.15)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            modelToDeleteTitle = nil
+                            modelDeleteAction = nil
+                        }
+                    }
+
+                CustomConfirmationDialog(
+                    title: "Delete \(title)?",
+                    message: "Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription.",
+                    confirmTitle: "Yes, delete it",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            action()
+                            modelToDeleteTitle = nil
+                            modelDeleteAction = nil
+                        }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            modelToDeleteTitle = nil
+                            modelDeleteAction = nil
+                        }
+                    }
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: modelToDeleteTitle != nil)
     }
 }
 
@@ -1024,9 +1137,7 @@ struct ModelCardView: View {
     let onSelect: () -> Void
     let onUse: () -> Void
     let onDownload: () -> Void
-    let onDelete: (() -> Void)?
-    
-    @State private var showDeleteConfirmation = false
+    let onDeleteRequest: (() -> Void)?
     
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -1141,9 +1252,10 @@ struct ModelCardView: View {
                             .padding(.horizontal, 8)
                             .background((isLoading ? Theme.textMuted : Theme.navy).opacity(0.1))
                             .clipShape(.rect(cornerRadius: 6))
+                            .clipShape(.rect(cornerRadius: 6))
                             
-                            if let deleteAction = onDelete {
-                                Button(action: { showDeleteConfirmation = true }) {
+                            if let deleteRequestAction = onDeleteRequest {
+                                Button(action: { deleteRequestAction() }) {
                                     HStack(spacing: 4) {
                                         Image(systemName: "trash")
                                         Text("Delete")
@@ -1157,17 +1269,6 @@ struct ModelCardView: View {
                                 .padding(.horizontal, 8)
                                 .background(Color.red.opacity(0.1))
                                 .clipShape(.rect(cornerRadius: 6))
-                                .alert(isPresented: $showDeleteConfirmation) {
-                                    Alert(
-                                        title: Text("Delete \(title)?"),
-                                        message: Text("Are you sure you want to delete this AI model? You will need to download it again before you can use it for transcription."),
-                                        primaryButton: .destructive(Text("Delete")) {
-                                            Logger.shared.debug("Settings: Confirmed Delete for \(title)")
-                                            deleteAction()
-                                        },
-                                        secondaryButton: .cancel()
-                                    )
-                                }
                             }
                         }
                     }

@@ -12,7 +12,7 @@ class OverlayPanelManager {
         hostingController.view.backgroundFilters = [] // ensure view background is clear to allow panel transparency
         
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: 230, height: 48),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -25,12 +25,8 @@ class OverlayPanelManager {
         panel.hasShadow = false
         panel.contentViewController = hostingController
         
-        // Position at near-top center of main screen
-        if let screen = NSScreen.main {
-            let x = screen.frame.midX - 150
-            let y = screen.frame.maxY - 120
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        
+        // We will position the panel dynamically in updateVisibility(for:)
         
         self.panel = panel
     }
@@ -52,6 +48,24 @@ class OverlayPanelManager {
         } else {
             // For .recording, .processing, and .initializing, show the panel
             if !panel.isVisible {
+                // Determine the screen where the mouse currently is, or fallback to main
+                let mouseLocation = NSEvent.mouseLocation
+                let screen = NSScreen.screens.first { $0.frame.contains(mouseLocation) } ?? NSScreen.main
+                
+                if let screen = screen {
+                    let width = panel.frame.width
+                    let height = panel.frame.height
+                    
+                    // Use visibleFrame to account for the menu bar and notch.
+                    // midX ensures it's perfectly centered horizontally.
+                    let x = screen.visibleFrame.midX - (width / 2)
+                    
+                    // Place it 16 points below the menu bar (visibleFrame.maxY).
+                    let y = screen.visibleFrame.maxY - height - 16
+                    
+                    panel.setFrameOrigin(NSPoint(x: x, y: y))
+                }
+                
                 panel.orderFrontRegardless()
             }
         }

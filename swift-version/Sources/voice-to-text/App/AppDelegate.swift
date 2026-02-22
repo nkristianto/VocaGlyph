@@ -1,6 +1,7 @@
 import Cocoa
 import SwiftUI
 import AppKit
+import SwiftData
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
@@ -11,6 +12,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
     var output: OutputService!
+    
+    var sharedModelContainer: ModelContainer? = {
+        let schema = Schema([
+            TranscriptionItem.self,
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            print("Could not create ModelContainer: \(error)")
+            return nil
+        }
+    }()
     
     lazy var permissionsService = PermissionsService()
     var onboardingWindow: NSWindow?
@@ -72,8 +87,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyService.start()
         
         // Setup Settings Window
+        var anySettingsView: AnyView
         let settingsView = SettingsView(whisper: whisper, stateManager: stateManager)
-        let hostingController = NSHostingController(rootView: settingsView)
+        if let container = sharedModelContainer {
+            anySettingsView = AnyView(settingsView.modelContainer(container))
+        } else {
+            anySettingsView = AnyView(settingsView)
+        }
+        let hostingController = NSHostingController(rootView: anySettingsView)
         
         settingsWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 850, height: 650),
@@ -197,8 +218,43 @@ extension AppDelegate: AppStateManagerDelegate {
         // The transcription has successfully completed.
         print("Final transcription output bound in AppDelegate: \(text)")
         
+        // Save to local history
+        if !text.isEmpty, let container = sharedModelContainer {
+            Task { @MainActor in
+                let context = container.mainContext
+                let newItem = TranscriptionItem(text: text)
+                context.insert(newItem)
+                
+                self.cleanupOldHistoryItems(context: context)
+                
+                do {
+                    try context.save()
+                } catch {
+                    print("Failed to save new transcription item: \(error)")
+                }
+            }
+        }
+        
         DispatchQueue.main.async {
             self.output.handleTranscriptionValue(text)
+        }
+    }
+    
+    @MainActor
+    private func cleanupOldHistoryItems(context: ModelContext) {
+        guard let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) else { return }
+        
+        let fetchDescriptor = FetchDescriptor<TranscriptionItem>(
+            predicate: #Predicate { $0.timestamp < thirtyDaysAgo }
+        )
+        
+        do {
+            let oldItems = try context.fetch(fetchDescriptor)
+            for item in oldItems {
+                context.delete(item)
+            }
+        } catch {
+            print("Failed to fetch old items for cleanup: \(error)")
         }
     }
 }

@@ -72,7 +72,12 @@ public actor NativeSpeechEngine: TranscriptionEngine {
                         hasResumed = true
                         // Cleanup
                         try? FileManager.default.removeItem(at: fileURL)
-                        continuation.resume(throwing: error)
+                        
+                        if error.localizedDescription.localizedCaseInsensitiveContains("No speech detected") || (error as NSError).code == 201 || (error as NSError).code == 1110 || (error as NSError).code == 207 {
+                            continuation.resume(returning: bestStringSoFar)
+                        } else {
+                            continuation.resume(throwing: error)
+                        }
                     }
                     return
                 }

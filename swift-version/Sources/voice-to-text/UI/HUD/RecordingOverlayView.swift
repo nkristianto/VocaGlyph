@@ -45,7 +45,7 @@ struct RecordingOverlayView: View {
                 }
                 .padding(.horizontal, 32)
                 .padding(.vertical, 14)
-                .frame(minWidth: (stateManager.currentState == .recording || stateManager.currentState == .processing) ? 230 : 200, minHeight: 48)
+                .frame(width: 230, height: 48)
                 .background(
                     Group {
                         if stateManager.currentState == .recording || stateManager.currentState == .processing {

@@ -46,7 +46,12 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         Logger.shared.info("AppStateManager: Switching post-processing engine to: \(selectedPostModel)")
         
         if selectedPostModel == "cloud-api" {
-            self.postProcessingEngine = GeminiEngine()
+            let selectedCloudProvider = UserDefaults.standard.string(forKey: "selectedCloudProvider") ?? "gemini"
+            if selectedCloudProvider == "anthropic" {
+                self.postProcessingEngine = AnthropicEngine()
+            } else {
+                self.postProcessingEngine = GeminiEngine()
+            }
         } else if selectedPostModel == "apple-native" {
             if #available(macOS 15.1, *) {
                 self.postProcessingEngine = AppleIntelligenceEngine()
@@ -91,7 +96,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 var text = try await router.transcribe(audioBuffer: buffer)
                 Logger.shared.info("AppStateManager: Router transcribed text successfully: '\(text)'")
                 
-                if shouldPostProcess, let postProcessor = self.postProcessingEngine {
+                if shouldPostProcess, let postProcessor = self.postProcessingEngine, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Logger.shared.info("AppStateManager: Post processing enabled, refining text...")
                     do {
                         let originalText = text
