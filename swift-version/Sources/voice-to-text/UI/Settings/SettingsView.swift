@@ -912,11 +912,36 @@ struct PostProcessingSettingsView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: stateManager.localLLMIsDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
-                        .foregroundStyle(stateManager.localLLMIsDownloaded ? .green : Theme.navy)
-                    Text(stateManager.localLLMIsDownloaded ? "Model downloaded" : "Model not downloaded")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Theme.navy)
+                    if stateManager.localLLMIsWarmedUp {
+                        // State 3: model is in memory and shader-warmed → ready
+                        Image(systemName: "bolt.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Model ready in memory")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.navy)
+                    } else if stateManager.localLLMIsDownloaded && stateManager.localLLMDownloadProgress != nil {
+                        // State 2: on disk, currently loading into RAM
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(Theme.accent)
+                        Text("Loading model into memory…")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.navy)
+                    } else if stateManager.localLLMIsDownloaded {
+                        // State 2b: on disk but not yet loaded / warm-up finished badge
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Model downloaded")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.navy)
+                    } else {
+                        // State 1: not on disk
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(Theme.navy)
+                        Text("Model not downloaded")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Theme.navy)
+                    }
                 }
                 if let progress = stateManager.localLLMDownloadProgress {
                     VStack(alignment: .leading, spacing: 4) {
@@ -932,6 +957,10 @@ struct PostProcessingSettingsView: View {
                     }
                 } else if !stateManager.localLLMIsDownloaded {
                     Text("Download the model before your first use to avoid delays during dictation.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                } else if !stateManager.localLLMIsWarmedUp {
+                    Text("Model loaded on next use. Launch app again to warm up automatically.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textMuted)
                 }

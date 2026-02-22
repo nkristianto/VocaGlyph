@@ -19,6 +19,10 @@ final class MockLocalLLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
         }
         return returnedText
     }
+
+    func loadContainer(modelId: String, progressHandler: @Sendable @escaping (Double) -> Void) async throws {
+        // No-op for tests — real model loading not required
+    }
 }
 
 // MARK: - LocalLLMEngineTests

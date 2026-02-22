@@ -85,6 +85,9 @@ public final class MLXLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
         cachedContainer = nil
         cachedModelId = nil
     }
+
+    /// `true` when a model container is currently held in Unified Memory.
+    public var isContainerLoaded: Bool { cachedContainer != nil }
 }
 
 // MARK: - Error Type
@@ -136,15 +139,27 @@ public actor LocalLLMEngine: PostProcessingEngine {
     // MARK: - Preload
 
     /// Eagerly downloads and caches the model, reporting progress 0.0→1.0 via `progressHandler`.
+    /// After loading completes, runs a tiny dummy inference to pre-compile Metal shaders
+    /// so the first real transcription session has no JIT compilation overhead.
     public func preloadModel(progressHandler: @Sendable @escaping (Double) -> Void) async throws {
         Logger.shared.info("LocalLLMEngine: Starting model preload for \(modelId)")
         do {
             try await provider.loadContainer(modelId: modelId, progressHandler: progressHandler)
-            Logger.shared.info("LocalLLMEngine: Model preload complete.")
+            Logger.shared.info("LocalLLMEngine: Model preload complete. Running Metal shader warm-up...")
+            await warmUpInference()
+            Logger.shared.info("LocalLLMEngine: Warm-up complete. Model is ready for zero-latency inference.")
         } catch {
             Logger.shared.error("LocalLLMEngine: Preload failed — \(error.localizedDescription)")
             throw LocalLLMEngineError.modelLoadFailed(error.localizedDescription)
         }
+    }
+
+    /// Returns `true` if the model container is currently loaded in Unified Memory.
+    public func isModelLoaded() -> Bool {
+        if let real = provider as? MLXLMInferenceProvider {
+            return real.isContainerLoaded
+        }
+        return false
     }
 
     // MARK: - Delete from Disk
@@ -221,6 +236,15 @@ public actor LocalLLMEngine: PostProcessingEngine {
     }
 
     // MARK: - Private Helpers
+
+    /// Runs a minimal single-token inference to trigger Metal shader JIT compilation.
+    /// Result is discarded — this purely pre-warms the GPU compute graph so the
+    /// first real user session has no compilation delay (typically saves 1–3 seconds).
+    private func warmUpInference() async {
+        let warmUpPrompt = buildPrompt(system: "You are a helpful assistant.", userText: "Hi")
+        _ = try? await provider.generate(prompt: warmUpPrompt, modelId: modelId)
+        Logger.shared.info("LocalLLMEngine: Metal shader warm-up inference complete.")
+    }
 
     private struct CacheEntry {
         let url: URL

@@ -10,18 +10,22 @@ public actor AppleIntelligenceEngine: PostProcessingEngine {
     public init() {}
     
     public func refine(text: String, prompt: String) async throws -> String {
+        PostProcessingLogger.shared.info("AppleIntelligenceEngine: [REQUEST] Attempting refine — input=\(text.count) chars, prompt='\(prompt)'")
+
         guard #available(macOS 15.1, *) else {
+            PostProcessingLogger.shared.error("AppleIntelligenceEngine: Failed — \(AppleIntelligenceError.unsupportedOSVersion.errorDescription ?? "")")
             throw AppleIntelligenceError.unsupportedOSVersion
         }
         
         #if canImport(LanguageModel)
         // Future-proofing for when the native LanguageModel framework is publicly available
+        PostProcessingLogger.shared.error("AppleIntelligenceEngine: Failed — \(AppleIntelligenceError.frameworkUnavailable.errorDescription ?? "")")
         throw AppleIntelligenceError.frameworkUnavailable
         #else
-        // If an explicit framework isn't available, we would attempt bridging NSTextView Writing Tools
-        // However, programmatically triggering Writing Tools without user UI interaction is currently unsupported
-        // by the public AppKit APIs (it requires the user to select the text and invoke the panel).
-        // Therefore, we throw to gracefully fallback to raw text.
+        // Apple has not yet exposed a public programmatic API for Writing Tools / Apple Intelligence.
+        // Programmatically triggering Writing Tools requires user UI interaction and is unsupported
+        // by the current public AppKit APIs. We throw to gracefully fallback to raw text.
+        PostProcessingLogger.shared.error("AppleIntelligenceEngine: Failed — \(AppleIntelligenceError.programmaticAccessUnavailable.errorDescription ?? "")")
         throw AppleIntelligenceError.programmaticAccessUnavailable
         #endif
     }

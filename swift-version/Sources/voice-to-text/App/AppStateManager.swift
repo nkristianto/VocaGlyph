@@ -43,6 +43,10 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     /// - `1.0`: complete (set back to nil after 1.5 s)
     @Published var localLLMDownloadProgress: Double? = nil
 
+    /// `true` when the local LLM is fully loaded in Unified Memory and shader-warmed.
+    /// Drive UI "Model Ready" / "Loading…" indicator from this.
+    @Published var localLLMIsWarmedUp: Bool = false
+
     /// `true` when the model files exist in the HuggingFace disk cache.
     @Published var localLLMIsDownloaded: Bool = false
 
@@ -63,8 +67,44 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         Task {
             await switchTranscriptionEngine(toModel: initialModel)
         }
-        
+
         switchPostProcessingEngine()
+
+        // Strategy 1: Eagerly warm up the local LLM in the background if it is
+        // already selected AND the model weights are on disk. This eliminates the
+        // 5–30 s lag users would otherwise experience on their first dictation.
+        // We never trigger a network download here — only load from disk.
+        warmUpLocalLLMIfNeeded()
+    }
+
+    /// Fires a background Task to preload + Metal-warm the local LLM when:
+    ///   1. `selectedTaskModel == "local-llm"` (user has chosen local AI)
+    ///   2. Post-processing is enabled
+    ///   3. Model weights already exist on disk (no download required)
+    ///
+    /// Runs at `.background` priority so it never contends with UI or audio.
+    private func warmUpLocalLLMIfNeeded() {
+        let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
+        let postProcessingEnabled = UserDefaults.standard.bool(forKey: "enablePostProcessing")
+
+        guard selectedPostModel == "local-llm", postProcessingEnabled else {
+            Logger.shared.info("AppStateManager: Background LLM warm-up skipped (local-llm not selected or post-processing disabled)")
+            return
+        }
+
+        Task.detached(priority: .background) { [weak self] in
+            guard let self else { return }
+            let engine = self.localLLMEngine
+            let isOnDisk = await engine.isModelDownloaded()
+            guard isOnDisk else {
+                Logger.shared.info("AppStateManager: Background LLM warm-up skipped — model not on disk yet")
+                return
+            }
+            Logger.shared.info("AppStateManager: Starting background LLM warm-up (model is on disk)")
+            await self.preloadLocalLLMModel()
+            Logger.shared.info("AppStateManager: Background LLM warm-up complete")
+            await MainActor.run { self.localLLMIsWarmedUp = true }
+        }
     }
     
     public func switchPostProcessingEngine() {
@@ -164,8 +204,12 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                     }
                     Logger.shared.info("AppStateManager: [PostProcessing] Done. Result: '\(refined)'")
                     finalText = refined
+                } catch let error as AppleIntelligenceError {
+                    let engineName = type(of: postProcessor)
+                    Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription) (Apple Intelligence programmatic API is not yet publicly available). Using raw transcription.")
                 } catch {
-                    Logger.shared.error("AppStateManager: [PostProcessing] Failed — \(error.localizedDescription). Using raw transcription.")
+                    let engineName = type(of: postProcessor)
+                    Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription). Using raw transcription.")
                 }
             }
 
