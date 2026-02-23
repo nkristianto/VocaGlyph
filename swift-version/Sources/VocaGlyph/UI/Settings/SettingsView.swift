@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import ServiceManagement
 #if canImport(FoundationModels)
 import FoundationModels
@@ -519,9 +520,13 @@ struct PostProcessingSettingsView: View {
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
     @AppStorage("selectedCloudProvider") private var selectedCloudProvider: String = "gemini"
     @AppStorage("selectedLocalLLMModel") private var selectedLocalLLMModel: String = "mlx-community/Qwen2.5-7B-Instruct-4bit"
-    @AppStorage("postProcessingPrompt") private var postProcessingPrompt: String = "Fix grammar and formatting. Return only the revised text."
-    
+
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var editingTemplate: PostProcessingTemplate? = nil
+
     var body: some View {
+        ZStack {
         VStack(alignment: .leading, spacing: 0) {
             // Sticky Header
             VStack(alignment: .leading, spacing: 4) {
@@ -553,6 +558,35 @@ struct PostProcessingSettingsView: View {
                 .padding(.bottom, 20)
             }
         }
+
+            // ── Full-panel template editor overlay ──────────────────────────
+            if let template = editingTemplate {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            editingTemplate = nil
+                        }
+                    }
+
+                TemplateEditorCard(
+                    template: template,
+                    onDismiss: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            editingTemplate = nil
+                        }
+                    },
+                    onDeleteTemplate: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            editingTemplate = nil
+                        }
+                    }
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editingTemplate == nil)
     }
     
     @ViewBuilder
@@ -711,9 +745,9 @@ struct PostProcessingSettingsView: View {
                     }
                     
                     Divider().background(Theme.textMuted.opacity(0.1))
-                    
-                    // Custom Prompt
-                    customPromptSection
+
+                    // Template selector
+                    templateSection
                 }
             }
             .background(Color.white)
@@ -1125,43 +1159,17 @@ struct PostProcessingSettingsView: View {
 
 
 
+    // MARK: - Template Section
+
     @ViewBuilder
-    private var customPromptSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Custom Instructions (Prompt)")
-                .fontWeight(.semibold)
-                .foregroundStyle(Theme.navy)
-            Text("Define exactly how the AI should modify your transcribed text.")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.textMuted)
-            
-            if #available(macOS 14.0, *) {
-                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"), axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.navy)
-                    .padding(10)
-                    .background(Theme.background)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
-                    .disabled(selectedTaskModel == "apple-native" && !AppStateManager.isMacOS15OrNewer())
-            } else {
-                TextField("e.g. Translate this to professional Spanish", text: $postProcessingPrompt.logged(name: "Custom Prompt"))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.navy)
-                    .padding(10)
-                    .background(Theme.background)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
-                    .disabled(selectedTaskModel == "apple-native" && !AppStateManager.isMacOS15OrNewer())
+    private var templateSection: some View {
+        TemplateListSection(onEdit: { template in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                editingTemplate = template
             }
-        }
-        .padding(16)
-        .background(Color.white) // Distinguish child area slightly if needed
+        })
     }
-    
+
     @ViewBuilder
     private var errorDisplaySection: some View {
         if let errorMessage = viewModel.errorMessage {
@@ -1706,3 +1714,621 @@ struct ModelCardView: View {
     }
 }
 
+// MARK: - TemplateListSection
+
+/// Template picker UI. Owns `@Query` for templates and presents the editor
+/// as a custom floating overlay card (matching the app's delete-confirmation style).
+struct TemplateListSection: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \PostProcessingTemplate.createdAt) private var templates: [PostProcessingTemplate]
+    @AppStorage(TemplateSeederService.activeTemplateKey) private var activeTemplateIdString: String = ""
+
+    /// Called when the user taps Edit on a template. Parent handles presenting the editor.
+    let onEdit: (PostProcessingTemplate) -> Void
+
+    // "New template" name entry overlay state
+    @State private var showAddTemplate = false
+    @State private var newTemplateName = ""
+
+    var body: some View {
+        ZStack {
+            // ── Picker list ───────────────────────────────────────────────
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Refinement Template")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Theme.navy)
+                Text("Choose a template that defines how the AI refines your text.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textMuted)
+
+                if templates.isEmpty {
+                    Text("No templates found. Restart the app to seed defaults.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(templates) { template in
+                            HStack {
+                                Image(systemName: activeTemplateIdString == template.id.uuidString
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(activeTemplateIdString == template.id.uuidString
+                                                       ? Theme.accent : Theme.textMuted)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(template.name)
+                                        .fontWeight(activeTemplateIdString == template.id.uuidString ? .semibold : .regular)
+                                        .foregroundStyle(Theme.navy)
+                                    if !template.templateDescription.isEmpty {
+                                        Text(template.templateDescription)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Theme.textMuted)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Button("Edit") {
+                                    onEdit(template)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.accent)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                activeTemplateIdString = template.id.uuidString
+                                Logger.shared.info("Settings: Active template changed to '\(template.name)'")
+                            }
+
+                            if template.id != templates.last?.id {
+                                Divider().padding(.horizontal, 12)
+                            }
+                        }
+                    }
+                    .background(Theme.background)
+                    .clipShape(.rect(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                }
+
+                Button {
+                    newTemplateName = ""
+                    withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = true }
+                } label: {
+                    Label("New Template", systemImage: "plus.circle")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+
+            // ── "New Template" name entry overlay ─────────────────────────
+            if showAddTemplate {
+                Color.black.opacity(0.15)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
+                    }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("New Template")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.navy)
+                            Text("Give your template a clear, descriptive name.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    TextField("e.g. Customer Emails, Technical Docs…", text: $newTemplateName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13))
+                        .onSubmit {
+                            if !newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                createAndEditTemplate()
+                            }
+                        }
+
+                    HStack(spacing: 12) {
+                        Spacer()
+                        Button("Cancel") {
+                            withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "#F2EFE9"))
+                        .cornerRadius(6)
+
+                        Button("Create") {
+                            createAndEditTemplate()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? Theme.accent.opacity(0.4) : Theme.accent)
+                        .cornerRadius(6)
+                        .disabled(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(24)
+                .frame(width: 380)
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showAddTemplate)
+    }
+
+
+    private func createAndEditTemplate() {
+        let t = PostProcessingTemplate(
+            name: newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  ? "Untitled" : newTemplateName,
+            isSystem: false
+        )
+        modelContext.insert(t)
+        activeTemplateIdString = t.id.uuidString
+        showAddTemplate = false
+        onEdit(t)
+    }
+}
+
+// MARK: - TemplateEditorCard
+
+/// Floating card editor for a single template's name and ordered rules.
+/// Styled to match the app's `CustomConfirmationDialog` popup pattern.
+struct TemplateEditorCard: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Bindable var template: PostProcessingTemplate
+    let onDismiss: () -> Void
+    let onDeleteTemplate: () -> Void
+
+    @State private var showAddRule = false
+    @State private var newRuleText = ""
+    @State private var showResetConfirm = false
+    @State private var showDeleteConfirm = false
+    @State private var editingRule: TemplateRule? = nil
+    @State private var editingRuleText = ""
+
+    var sortedRules: [TemplateRule] {
+        template.rules.sorted { $0.order < $1.order }
+    }
+
+    var isOverLength: Bool {
+        TemplatePromptRenderer.isOverRecommendedLength(template: template)
+    }
+
+    var body: some View {
+        ZStack {
+            // ── Main card ─────────────────────────────────────────────────
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        TextField("Template name", text: $template.name)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Theme.navy)
+                            .textFieldStyle(.plain)
+                        if template.isSystem {
+                            Text("System template")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Theme.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+                .padding(20)
+
+                Divider().background(Theme.textMuted.opacity(0.15))
+
+                // Rules list
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if template.rules.isEmpty {
+                            HStack {
+                                Spacer()
+                                Text("No rules yet. Tap \"Add Rule\" below.")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Theme.textMuted)
+                                Spacer()
+                            }
+                            .padding(20)
+                        } else {
+                            ForEach(sortedRules) { rule in
+                                HStack(alignment: .center, spacing: 10) {
+                                    Toggle("", isOn: Binding(
+                                        get: { rule.isEnabled },
+                                        set: { rule.isEnabled = $0; template.updatedAt = Date() }
+                                    ))
+                                    .labelsHidden()
+                                    .toggleStyle(.switch)
+                                    .controlSize(.mini)
+
+                                    // Read-only label — tap pencil to edit
+                                    Text(rule.instruction)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(rule.isEnabled ? Theme.navy : Theme.textMuted)
+                                        .strikethrough(!rule.isEnabled, color: Theme.textMuted.opacity(0.5))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .lineLimit(2)
+
+                                    // Edit button
+                                    Button {
+                                        editingRuleText = rule.instruction
+                                        withAnimation(.easeInOut(duration: 0.15)) { editingRule = rule }
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(Theme.textMuted)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Edit rule")
+
+                                    // Delete button
+                                    Button {
+                                        template.rules.removeAll { $0.id == rule.id }
+                                        modelContext.delete(rule)
+                                        reorderRules()
+                                        template.updatedAt = Date()
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(Color(hex: "#EE6B6E"))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Delete rule")
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+
+                                if rule.id != sortedRules.last?.id {
+                                    Divider()
+                                        .background(Theme.textMuted.opacity(0.1))
+                                        .padding(.horizontal, 16)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(height: 200)
+
+                Divider().background(Theme.textMuted.opacity(0.15))
+
+                // Footer
+                VStack(alignment: .leading, spacing: 8) {
+                    if isOverLength {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.system(size: 11))
+                            Text("Too many rules may reduce accuracy for local AI engines.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        // Add Rule button
+                        Button {
+                            newRuleText = ""
+                            withAnimation(.easeInOut(duration: 0.15)) { showAddRule = true }
+                        } label: {
+                            Label("Add Rule", systemImage: "plus.circle")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        if template.isSystem && !template.defaultRules.isEmpty {
+                            Button("Reset to Default") {
+                                withAnimation(.easeInOut(duration: 0.15)) { showResetConfirm = true }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.navy)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color(hex: "#F2EFE9"))
+                            .cornerRadius(6)
+                        }
+
+                        if !template.isSystem {
+                            Button("Delete Template") {
+                                withAnimation(.easeInOut(duration: 0.15)) { showDeleteConfirm = true }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Color(hex: "#EE6B6E"))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .frame(width: 480)
+            .background(Color.white)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
+
+            // ── Add Rule overlay ──────────────────────────────────────────
+            if showAddRule {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
+                    }
+
+                addRuleCard
+                    .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+
+            // ── Reset confirmation overlay ────────────────────────────────
+            if showResetConfirm {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                CustomConfirmationDialog(
+                    title: "Reset to default rules?",
+                    message: "Your custom changes will be lost. The original rules will be restored.",
+                    confirmTitle: "Yes, reset it",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        resetToDefaults()
+                        withAnimation(.easeInOut(duration: 0.15)) { showResetConfirm = false }
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.15)) { showResetConfirm = false }
+                    }
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+
+            // ── Delete confirmation overlay ───────────────────────────────
+            if showDeleteConfirm {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                CustomConfirmationDialog(
+                    title: "Delete this template?",
+                    message: "This cannot be undone.",
+                    confirmTitle: "Yes, delete it",
+                    cancelTitle: "Cancel",
+                    onConfirm: {
+                        showDeleteConfirm = false
+                        onDeleteTemplate()
+                        modelContext.delete(template)
+                    },
+                    onCancel: {
+                        withAnimation(.easeInOut(duration: 0.15)) { showDeleteConfirm = false }
+                    }
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+            // ── Edit Rule overlay ─────────────────────────────────────────
+            if let rule = editingRule {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
+                    }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Edit Rule")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.navy)
+                            Text("Describe one specific instruction for the AI.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    TextEditor(text: $editingRuleText)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.navy)
+                        .frame(minHeight: 80, maxHeight: 120)
+                        .padding(8)
+                        .background(Color(hex: "#F9F8F6"))
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+
+                    HStack(spacing: 12) {
+                        Spacer()
+                        Button("Cancel") {
+                            withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "#F2EFE9"))
+                        .cornerRadius(6)
+
+                        Button("Save") {
+                            let trimmed = editingRuleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                rule.instruction = trimmed
+                                template.updatedAt = Date()
+                            }
+                            withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(editingRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? Theme.accent.opacity(0.4) : Theme.accent)
+                        .cornerRadius(6)
+                        .disabled(editingRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(24)
+                .frame(width: 380)
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: showAddRule)
+        .animation(.easeInOut(duration: 0.15), value: showResetConfirm)
+        .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
+        .animation(.easeInOut(duration: 0.15), value: editingRule == nil)
+    }
+
+    // MARK: - Add Rule Card
+
+    @ViewBuilder
+    private var addRuleCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Add Rule")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                    Text("Describe one specific instruction for the AI.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .buttonStyle(.plain)
+            }
+
+            TextField("e.g. Remove filler words: um, uh, like", text: $newRuleText, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
+                .onSubmit {
+                    if !newRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        commitAddRule()
+                    }
+                }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel") {
+                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.navy)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(hex: "#F2EFE9"))
+                .cornerRadius(6)
+
+                Button("Add") {
+                    commitAddRule()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(newRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? Theme.accent.opacity(0.4) : Theme.accent)
+                .cornerRadius(6)
+                .disabled(newRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.top, 4)
+        }
+        .padding(24)
+        .frame(width: 380)
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
+    }
+
+    // MARK: - Helpers
+
+    private func commitAddRule() {
+        let text = newRuleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let nextOrder = (template.rules.map { $0.order }.max() ?? 0) + 1
+        let rule = TemplateRule(order: nextOrder, instruction: text)
+        rule.template = template
+        template.rules.append(rule)
+        modelContext.insert(rule)
+        template.updatedAt = Date()
+        newRuleText = ""
+        withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
+    }
+
+    private func reorderRules() {
+        let sorted = template.rules.sorted { $0.order < $1.order }
+        for (idx, rule) in sorted.enumerated() { rule.order = idx + 1 }
+    }
+
+    private func resetToDefaults() {
+        for rule in template.rules { modelContext.delete(rule) }
+        template.rules.removeAll()
+        for (index, text) in template.defaultRules.enumerated() {
+            let rule = TemplateRule(order: index + 1, instruction: text)
+            rule.template = template
+            template.rules.append(rule)
+            modelContext.insert(rule)
+        }
+        template.updatedAt = Date()
+        Logger.shared.info("TemplateEditorCard: Reset '\(template.name)' to default rules.")
+    }
+}

@@ -1,6 +1,6 @@
 import XCTest
 import SwiftData
-@testable import voice_to_text
+@testable import VocaGlyph
 
 @MainActor
 final class HistoryCleanupTests: XCTestCase {

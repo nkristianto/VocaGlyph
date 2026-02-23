@@ -1,6 +1,6 @@
 import XCTest
 import AVFoundation
-@testable import voice_to_text
+@testable import VocaGlyph
 
 class MockAppStateManagerDelegate: AppStateManagerDelegate {
     var lastStateReceived: AppState?

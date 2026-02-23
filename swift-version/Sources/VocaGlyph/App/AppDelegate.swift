@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var sharedModelContainer: ModelContainer? = {
         let schema = Schema([
             TranscriptionItem.self,
+            PostProcessingTemplate.self,
+            TemplateRule.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -70,7 +72,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     
-    func initializeCoreServices() {
+    @MainActor func initializeCoreServices() {
+        // Seed default post-processing templates if this is a first launch
+        if let container = sharedModelContainer {
+            let context = container.mainContext
+            TemplateSeederService.seedDefaultTemplatesIfNeeded(context: context)
+            stateManager.modelContext = context
+        }
+
         // Initialize Core Services
         stateManager.delegate = self
         audioRecorder = AudioRecorderService()

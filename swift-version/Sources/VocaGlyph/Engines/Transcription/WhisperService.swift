@@ -338,12 +338,47 @@ extension WhisperService: TranscriptionEngine {
             detectLanguage: isExplicitLanguage ? false : nil, // nil = WhisperKit defaults (auto-detect when prefill off)
             skipSpecialTokens: true,
             withoutTimestamps: true
+            // Note: chunkingStrategy: .vad was removed — it runs a full neural VAD
+            // pre-processing pass before encoding, adding ~200-600ms of latency on
+            // short dictation clips. Our trimSilence() handles silence more cheaply.
         )
         
-        let results = try await whisperKit.transcribe(audioArray: audioArray, decodeOptions: decodingOptions)
+        // Trim leading/trailing silence before handing audio to the encoder.
+        // If the entire recording is below the silence threshold (e.g. a stray hotkey
+        // press with no speech), skip WhisperKit entirely — sending silence to the
+        // encoder causes hallucinations like "you." or "thank you."
+        guard let trimmedAudio = trimSilence(audioArray) else {
+            Logger.shared.info("WhisperService: Audio is entirely silent — skipping encoder.")
+            return ""
+        }
+        let silencePct = Int((1.0 - Float(trimmedAudio.count) / Float(audioArray.count)) * 100)
+        Logger.shared.info("WhisperService: Trimmed audio from \(audioArray.count) to \(trimmedAudio.count) frames (\(silencePct)% silence removed)")
+        
+        let results = try await whisperKit.transcribe(audioArray: trimmedAudio, decodeOptions: decodingOptions)
         let combinedText = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
         Logger.shared.info("WhisperService: Transcription finished successfully.")
         
         return combinedText
+    }
+    // MARK: - Silence Trimming
+
+    /// Removes leading and trailing silence from a raw PCM sample array.
+    /// Returns `nil` when the audio is entirely silent (nothing above `threshold`),
+    /// allowing the caller to skip the encoder entirely instead of hallucinating.
+    ///
+    /// - Parameters:
+    ///   - samples:   Array of 32-bit float PCM samples (mono, 16 kHz).
+    ///   - threshold: Amplitude below which a sample is considered silent.
+    ///                0.01 ≈ -40 dBFS, appropriate for close-mic dictation.
+    private func trimSilence(_ samples: [Float], threshold: Float = 0.01) -> [Float]? {
+        guard !samples.isEmpty else { return nil }
+        guard let firstNonSilent = samples.firstIndex(where: { abs($0) > threshold }),
+              let lastNonSilent  = samples.lastIndex(where:  { abs($0) > threshold }),
+              firstNonSilent < lastNonSilent
+        else {
+            // Entirely silent — signal caller to skip encoding.
+            return nil
+        }
+        return Array(samples[firstNonSilent...lastNonSilent])
     }
 }

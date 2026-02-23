@@ -1,6 +1,6 @@
 import XCTest
 import AVFoundation
-@testable import voice_to_text
+@testable import VocaGlyph
 
 final class MockSystemPermissionsProvider: SystemPermissionsProvider, @unchecked Sendable {
     var microphoneStatus: AVAuthorizationStatus = .notDetermined

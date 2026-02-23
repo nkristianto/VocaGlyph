@@ -1,5 +1,5 @@
 import XCTest
-@testable import voice_to_text
+@testable import VocaGlyph
 
 // MARK: - Sanitize Tests (Level 1: Chatty Preambles)
 

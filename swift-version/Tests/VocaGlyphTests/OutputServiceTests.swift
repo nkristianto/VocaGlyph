@@ -1,6 +1,6 @@
 import XCTest
 import AppKit
-@testable import voice_to_text
+@testable import VocaGlyph
 
 final class OutputServiceTests: XCTestCase {
     

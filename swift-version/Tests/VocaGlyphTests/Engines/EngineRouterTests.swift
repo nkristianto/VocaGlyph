@@ -1,6 +1,6 @@
 import XCTest
 import AVFoundation
-@testable import voice_to_text
+@testable import VocaGlyph
 
 class MockTranscriptionEngine: TranscriptionEngine, @unchecked Sendable {
     var shouldThrowError = false

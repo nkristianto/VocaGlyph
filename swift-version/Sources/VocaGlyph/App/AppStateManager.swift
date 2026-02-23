@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AVFoundation
+import SwiftData
 
 enum AppState {
     case idle
@@ -19,6 +20,10 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     var engineRouter: EngineRouter?
     var sharedWhisper: WhisperService?
     var postProcessingEngine: (any PostProcessingEngine)?
+
+    /// SwiftData context injected by AppDelegate after ModelContainer is ready.
+    /// Used by `buildActiveTemplatePrompt()` to fetch the active template at call-time.
+    var modelContext: ModelContext?
 
     /// Singleton local LLM engine — persists model weights in Unified Memory.
     /// Recreated only when the user switches to a different model ID.
@@ -164,7 +169,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         }
 
         let shouldPostProcess = UserDefaults.standard.bool(forKey: "enablePostProcessing")
-        let postProcessPrompt = UserDefaults.standard.string(forKey: "postProcessingPrompt") ?? ""
+        let postProcessPrompt = buildActiveTemplatePrompt()
 
         Task {
             // ── Stage 1: Transcription (15s timeout) ─────────────────────────────
@@ -310,6 +315,38 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     }
 }
 
+// MARK: - Template Prompt Builder
+
+extension AppStateManager {
+    /// Fetches the active `PostProcessingTemplate` from SwiftData and renders it
+    /// into a structured system prompt via `TemplatePromptRenderer`.
+    ///
+    /// Returns an empty string when:
+    /// - No `modelContext` is available (no SwiftData container)
+    /// - No active template ID is stored in `UserDefaults`
+    /// - The active template has no enabled rules (e.g., "Raw — No Processing")
+    private func buildActiveTemplatePrompt() -> String {
+        guard let context = modelContext,
+              let idString = UserDefaults.standard.string(forKey: TemplateSeederService.activeTemplateKey),
+              let templateId = UUID(uuidString: idString) else {
+            Logger.shared.info("AppStateManager: No active template ID found — skipping post-processing prompt.")
+            return ""
+        }
+
+        let descriptor = FetchDescriptor<PostProcessingTemplate>(
+            predicate: #Predicate { $0.id == templateId }
+        )
+        guard let template = try? context.fetch(descriptor).first else {
+            Logger.shared.error("AppStateManager: Active template ID \(templateId) not found in SwiftData.")
+            return ""
+        }
+
+        let prompt = TemplatePromptRenderer.render(template: template)
+        Logger.shared.info("AppStateManager: Rendered template '\(template.name)' (\(prompt.count) chars)")
+        return prompt
+    }
+}
+
 extension AppStateManager {
     static func isMacOS15OrNewer() -> Bool {
         if #available(macOS 15.0, *) {
@@ -332,14 +369,25 @@ extension AppStateManager {
             "thank you for watching", "thank you for watching.",
             "thank you for listening", "thank you for listening.",
             "bye", "bye.", "bye-bye", "bye-bye.", "goodbye", "goodbye.",
+            // "you" — Whisper's most common minimal silence output
             "you", "you.",
+            // Apostrophe-prefixed variants: Whisper sometimes outputs "'you." with a leading apostrophe
+            "'you.", "'you", "' you.", "' you",
+            // Punctuation-only
             ".", "...", "..",
             // Common noise transcriptions
             "hmm", "hmm.", "um", "um.", "uh", "uh.",
             "mm-hmm", "mm-hmm.", "mhm", "mhm.",
+            // Other common Whisper silence hallucinations
+            "i see.", "i see", "okay.", "okay", "ok.", "ok",
+            "yes.", "yes", "no.", "no",
+            "all right.", "all right", "alright.", "alright",
+            "right.", "right",
+            "sure.", "sure",
             // Indonesian equivalents (common when language detection drifts)
             "terima kasih", "terima kasih.",
             "ya", "ya.", "iya", "iya.",
+            "oke", "oke.", "oke.",
         ]
 
         let lower = text.lowercased()

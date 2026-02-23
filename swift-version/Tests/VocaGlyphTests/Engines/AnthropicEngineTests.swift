@@ -1,5 +1,5 @@
 import XCTest
-@testable import voice_to_text
+@testable import VocaGlyph
 
 final class AnthropicEngineTests: XCTestCase {
     var session: URLSession!

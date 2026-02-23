@@ -1,5 +1,5 @@
 import XCTest
-@testable import voice_to_text
+@testable import VocaGlyph
 
 class MockURLProtocol: URLProtocol {
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))?
