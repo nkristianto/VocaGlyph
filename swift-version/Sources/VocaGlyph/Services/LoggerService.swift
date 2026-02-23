@@ -4,8 +4,10 @@ import SwiftUI
 // MARK: - Shared log directory
 
 private let vocaGlyphLogsDir: URL = {
-    let home = FileManager.default.homeDirectoryForCurrentUser
-    let dir = home.appendingPathComponent(".VocaGlyph").appendingPathComponent("logs")
+    // ~/Library/Logs/VocaGlyph/ is the Apple-designated app log location.
+    // No Full Disk Access required; logs appear automatically in Console.app.
+    let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Logs/VocaGlyph", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }()

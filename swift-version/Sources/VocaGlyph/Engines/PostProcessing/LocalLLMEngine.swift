@@ -5,17 +5,21 @@ import MLXLMCommon
 
 // MARK: - App-specific storage root
 
-/// All VocaGlyph data lives under `~/.VocaGlyph/`.
+/// MLX/LLM model data lives under `~/Library/Caches/VocaGlyph/`.
 /// HubApi appends `/{repoType}/{org}/{name}/` to downloadBase, so:
-/// `downloadBase = ~/.VocaGlyph` → models land at `~/.VocaGlyph/models/mlx-community/Qwen3-0.6B-4bit/`
-private func vocaGlyphDir() -> URL {
-    FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".VocaGlyph")
+/// `downloadBase = ~/Library/Caches/VocaGlyph` → models land at
+/// `~/Library/Caches/VocaGlyph/models/mlx-community/Qwen3-0.6B-4bit/`
+/// This is the standard macOS location for re-downloadable cached data; no Full Disk Access required.
+private func vocaGlyphCacheDir() -> URL {
+    let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("VocaGlyph", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
 }
 
-/// Shared HubApi — sets downloadBase to `~/.VocaGlyph/`.
-/// HubApi will create `~/.VocaGlyph/models/<org>/<name>/` automatically.
-private let vocaGlyphHubApi: HubApi = HubApi(downloadBase: vocaGlyphDir())
+/// Shared HubApi — sets downloadBase to `~/Library/Caches/VocaGlyph/`.
+/// HubApi will create `VocaGlyph/models/<org>/<name>/` automatically.
+private let vocaGlyphHubApi: HubApi = HubApi(downloadBase: vocaGlyphCacheDir())
 
 // MARK: - Inference Provider Protocol (Injectable for testing)
 
@@ -253,9 +257,9 @@ public actor LocalLLMEngine: PostProcessingEngine {
 
     /// Returns the directory where HubApi caches the model on disk.
     /// HubApi path: `downloadBase/models/{org}/{name}/`
-    /// With downloadBase `~/.VocaGlyph` → `~/.VocaGlyph/models/mlx-community/Qwen3-0.6B-4bit/`
+    /// With downloadBase `~/Library/Caches/VocaGlyph` → `~/Library/Caches/VocaGlyph/models/mlx-community/Qwen3-0.6B-4bit/`
     private func modelCacheDirectory() -> CacheEntry? {
-        var dir = vocaGlyphDir().appendingPathComponent("models")
+        var dir = vocaGlyphCacheDir().appendingPathComponent("models")
         for component in modelId.split(separator: "/") {
             dir = dir.appendingPathComponent(String(component))
         }

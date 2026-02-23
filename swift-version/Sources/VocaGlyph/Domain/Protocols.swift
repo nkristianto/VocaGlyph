@@ -1,4 +1,5 @@
 import AVFoundation
+import Speech
 
 public protocol TranscriptionEngine: Sendable {
     func transcribe(audioBuffer: AVAudioPCMBuffer) async throws -> String
@@ -18,6 +19,6 @@ protocol SystemPermissionsProvider: Sendable {
     func requestMicrophoneAccess() async -> Bool
     func checkAccessibilityTrusted() -> Bool
     func promptAccessibilityTrusted() -> Bool
-    func checkFullDiskAccess() -> Bool
-    func promptFullDiskAccess()
+    func getSpeechRecognitionAuthorizationStatus() -> SFSpeechRecognizerAuthorizationStatus
+    func requestSpeechRecognitionAccess() async -> Bool
 }

@@ -50,13 +50,13 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     
     // Base directory for all VocaGlyph model storage
     private var baseDirectoryPath: URL {
-        let fileManager = FileManager.default
-        let homeDir = fileManager.homeDirectoryForCurrentUser
-        let vocaGlyphDir = homeDir.appendingPathComponent(".VocaGlyph", isDirectory: true)
-        let baseDir = vocaGlyphDir.appendingPathComponent("models", isDirectory: true)
-        if !fileManager.fileExists(atPath: baseDir.path) {
+        // ~/Library/Application Support/VocaGlyph/models/ is the standard macOS location
+        // for persistent app data. No Full Disk Access required.
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let baseDir = appSupport.appendingPathComponent("VocaGlyph/models", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: baseDir.path) {
             do {
-                try fileManager.createDirectory(at: baseDir, withIntermediateDirectories: true, attributes: nil)
+                try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true, attributes: nil)
             } catch {
                 print("Failed to create models directory: \(error)")
             }
