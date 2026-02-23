@@ -100,9 +100,13 @@ Completes the open model sandbox by letting power users securely drop in Anthrop
 Provides a seamless onboarding flow ensuring all required system permissions are granted before dictation begins.
 **FRs covered:** N/A (Usability/Permissions)
 
-### Epic 7: Local History & Management `[Status: Not Started]`
+### Epic 7: Local History & Management `[Status: Done]`
 Provides a local historical record of all transcriptions using SwiftData, allowing users to view, search, copy, and delete past dictations.
 **FRs covered:** N/A (Usability/Data Management)
+
+### Epic 8: Post-Processing Template System `[Status: Not Started]`
+Replaces the monolithic free-text post-processing prompt with a named, ordered, editable template system stored in SwiftData. Reduces local LLM hallucinations by rendering templates as strictly structured numbered prompts. Gives users full control over refinement behaviour without requiring code changes.
+**FRs covered:** FR12 (custom instructions for post-processing)
 
 ---
 
@@ -316,3 +320,25 @@ So that I can recover text if I lost my clipboard or want to reference past thou
 **Given** a specific history item, when the user clicks the Copy button, then the text is copied to the macOS clipboard.
 **Given** a specific history item, when the user selects Delete from the menu, then the item is deleted from the database and the UI updates immediately.
 **Given** a database containing items older than 30 days, when a new dictation finishes (or the app launches), then those old items are automatically deleted from SwiftData.
+
+---
+
+## Epic 8: Post-Processing Template System
+
+Replaces the monolithic free-text post-processing prompt with a named, ordered, editable template system stored in SwiftData. Reduces local LLM hallucinations by rendering templates as tightly structured numbered prompts. Gives users full control over refinement behaviour across any engine without requiring code changes.
+
+### Story 8.1: Post-Processing Template System `[ ] Not Started`
+
+As a power user who relies on post-processing AI to refine my dictations,
+I want to define and manage named templates — each containing an ordered list of discrete rules — to control how the AI refines my text,
+So that I can precisely tune the AI's behaviour per use-case, reduce hallucinations from local models, and easily switch between different refinement styles.
+
+**Acceptance Criteria:**
+**Given** no templates exist, when the app launches for the first time, then three system templates are seeded: "General Cleanup" (active default), "Meeting Notes", and "Raw — No Processing".
+**Given** the user opens Settings → Post-Processing, when viewing the section, then a Template subsection is visible with a picker, rule editor, and template management controls.
+**Given** the user selects a template, when a dictation finishes and post-processing is enabled, then `TemplatePromptRenderer.render(template:)` builds a numbered-list prompt that is passed to `engine.refine(text:prompt:)`.
+**Given** a template with no enabled rules, when `render(template:)` is called, then it returns an empty string, effectively suppressing post-processing.
+**Given** the combined character count of all enabled rules exceeds 800 characters, when the template editor is open, then an inline warning is shown: "Too many rules may reduce accuracy for local AI engines."
+**Given** the user has edited a system template, when they tap "Reset to Default", then the template's rules are restored to their original seeded values.
+**Given** a custom (non-system) template, when the user taps "Delete Template", then it is permanently removed from SwiftData.
+**Given** the implementation is complete, when `AppStateManager.processAudio()` builds the post-processing prompt, then it no longer reads `UserDefaults["postProcessingPrompt"]`.

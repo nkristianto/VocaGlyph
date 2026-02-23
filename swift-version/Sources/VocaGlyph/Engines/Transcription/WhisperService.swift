@@ -48,40 +48,53 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         }
     }
     
-    // Base directory for all VocaGlyph model storage
+    // The default HuggingFace repo for WhisperKit CoreML models
+    static let defaultModelRepo = "argmaxinc/whisperkit-coreml"
+
+    // Base directory passed to WhisperKit.download(). No Full Disk Access or Documents
+    // permission required — ~/Library/Application Support is sandbox-friendly.
+    //
+    // HubApi appends `models/<repo-id>` automatically, resulting in:
+    //   VocaGlyph/models/argmaxinc/whisperkit-coreml/<model-variant>/
     private var baseDirectoryPath: URL {
-        // ~/Library/Application Support/VocaGlyph/models/ is the standard macOS location
-        // for persistent app data. No Full Disk Access required.
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let baseDir = appSupport.appendingPathComponent("VocaGlyph/models", isDirectory: true)
+        let baseDir = appSupport.appendingPathComponent("VocaGlyph", isDirectory: true)
         if !FileManager.default.fileExists(atPath: baseDir.path) {
-            do {
-                try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true, attributes: nil)
-            } catch {
-                print("Failed to create models directory: \(error)")
-            }
+            try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
         }
         return baseDir
     }
 
-    // The default HuggingFace repo for WhisperKit CoreML models
-    static let defaultModelRepo = "argmaxinc/whisperkit-coreml"
-
-    
-    // The actual directory where WhisperKit saves models for a given repo
-    private func modelsDirectory(for repo: String = WhisperService.defaultModelRepo) -> URL {
-        return baseDirectoryPath.appendingPathComponent("models/\(repo)")
-    }
-    
-    // Legacy accessor kept for compatibility (points to default repo)
-    private var actualModelsDirectory: URL {
-        modelsDirectory(for: WhisperService.defaultModelRepo)
+    // The HubApi repoDestination for the default repo — this is where WhisperKit stores
+    // downloaded model files directly (not in .cache, which is only metadata).
+    //   VocaGlyph/models/argmaxinc/whisperkit-coreml/<model-variant>/
+    private var repoDestination: URL {
+        baseDirectoryPath
+            .appendingPathComponent("models/\(WhisperService.defaultModelRepo)",
+                                    isDirectory: true)
     }
     
     init() {
+        migrateOldModelsDirectoryIfNeeded()
         checkDownloadedModels()
         Task {
             await autoInitialize()
+        }
+    }
+
+    /// Removes the legacy doubled `VocaGlyph/models/models/...` directory that was created
+    /// by a previous bug where baseDirectoryPath already contained `models` and HubApi
+    /// appended another `models/<repo>` on top. Safe to delete — models will re-download
+    /// into the corrected `VocaGlyph/models/argmaxinc/whisperkit-coreml/` layout.
+    private func migrateOldModelsDirectoryIfNeeded() {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let oldDoubledDir = appSupport.appendingPathComponent("VocaGlyph/models/models", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: oldDoubledDir.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: oldDoubledDir)
+            Logger.shared.info("WhisperService: Removed legacy doubled models directory at \(oldDoubledDir.path)")
+        } catch {
+            Logger.shared.error("WhisperService: Could not remove legacy directory: \(error)")
         }
     }
     
@@ -94,21 +107,29 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     
     private func getDownloadedModelsSync() -> Set<String> {
         let fileManager = FileManager.default
-        let modelsDir = actualModelsDirectory
+        // HubApi places model files directly under repoDestination (not in .cache/).
+        let scanDir = repoDestination
 
         var downloaded = Set<String>()
-        do {
-            let items = try fileManager.contentsOfDirectory(atPath: modelsDir.path)
-            for item in items {
-                // Strip known prefixes to get back to the variant name
-                if item.hasPrefix("openai_whisper-") {
-                    downloaded.insert(String(item.dropFirst("openai_whisper-".count)))
-                } else if item.hasPrefix("distil-whisper_") {
-                    downloaded.insert(item) // keep full name e.g. distil-whisper_distil-large-v3
-                }
+        guard let items = try? fileManager.contentsOfDirectory(atPath: scanDir.path) else {
+            return downloaded
+        }
+        for item in items {
+            // Skip hidden directories like .cache
+            guard !item.hasPrefix(".") else { continue }
+            // Only count folders that contain actual model files (e.g. AudioEncoder.mlmodelc)
+            let modelFolder = scanDir.appendingPathComponent(item)
+            let hasModel = fileManager.fileExists(
+                atPath: modelFolder.appendingPathComponent("AudioEncoder.mlmodelc").path
+            )
+            guard hasModel else { continue }
+
+            // Strip known prefixes to get back to the UI variant name
+            if item.hasPrefix("openai_whisper-") {
+                downloaded.insert(String(item.dropFirst("openai_whisper-".count)))
+            } else if item.hasPrefix("distil-whisper_") {
+                downloaded.insert(item)
             }
-        } catch {
-            print("No models downloaded yet or directory missing.")
         }
         return downloaded
     }
@@ -161,11 +182,12 @@ class WhisperService: ObservableObject, @unchecked Sendable {
 
             startLoadingProgressTimer()
             
-            // On-disk folder name depends on the model prefix convention
+            // HubApi stores complete model files at repoDestination/<folderName>.
+            // (The .cache subdirectory only contains download metadata, not the actual models.)
             let folderName = modelName.hasPrefix("distil-whisper_")
                 ? modelName
                 : "openai_whisper-\(modelName)"
-            let modelPath = actualModelsDirectory.appendingPathComponent(folderName)
+            let modelPath = repoDestination.appendingPathComponent(folderName)
             
             Logger.shared.info("WhisperService: Model available at \(modelPath). Loading into memory...")
 
@@ -177,6 +199,10 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             // is no "slow first transcription" penalty when the user first presses the hotkey.
             let config = WhisperKitConfig(
                 modelFolder: modelPath.path,
+                // Setting tokenizerFolder to modelPath prevents WhisperKit from creating
+                // HubApi(downloadBase: nil), which would default to ~/Documents/huggingface
+                // and trigger the macOS sandbox Documents folder permission dialog.
+                tokenizerFolder: modelPath,
                 computeOptions: ModelComputeOptions(
                     melCompute: .cpuAndNeuralEngine,
                     audioEncoderCompute: .cpuAndNeuralEngine,
@@ -312,13 +338,28 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         let folderName = modelName.hasPrefix("distil-whisper_")
             ? modelName
             : "openai_whisper-\(modelName)"
-        let modelDir = actualModelsDirectory.appendingPathComponent(folderName)
-        
-        do {
-            try fileManager.removeItem(at: modelDir)
+
+        // Primary: model files are at repoDestination/<folderName>
+        let primaryDir = repoDestination.appendingPathComponent(folderName)
+        // Secondary: any incomplete/cache copies under .cache/
+        let cacheDir = repoDestination
+            .appendingPathComponent(".cache/huggingface/download/\(folderName)", isDirectory: true)
+
+        var deleted = false
+        for dir in [primaryDir, cacheDir] {
+            if fileManager.fileExists(atPath: dir.path) {
+                do {
+                    try fileManager.removeItem(at: dir)
+                    Logger.shared.info("WhisperService: Removed '\(dir.lastPathComponent)' at \(dir.path)")
+                    deleted = true
+                } catch {
+                    Logger.shared.error("WhisperService: Failed to remove \(dir.path): \(error)")
+                }
+            }
+        }
+
+        if deleted {
             checkDownloadedModels()
-            
-            // If we deleted the currently active model, unload it.
             if activeModel == modelName {
                 Logger.shared.info("WhisperService: Deleted model was the active model. Unloading WhisperKit...")
                 self.whisperKit = nil
@@ -329,8 +370,8 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 }
             }
             Logger.shared.info("WhisperService: Successfully deleted model '\(modelName)'")
-        } catch {
-            Logger.shared.error("WhisperService: Failed to delete model '\(modelName)': \(error)")
+        } else {
+            Logger.shared.error("WhisperService: No files found to delete for model '\(modelName)'")
         }
     }
     

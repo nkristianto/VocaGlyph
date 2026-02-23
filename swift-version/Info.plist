@@ -5,9 +5,13 @@
 	<key>CFBundleExecutable</key>
 	<string>VocaGlyph</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.nkristianto.vocaglyph</string>
+	<string>com.vocaglyph.app</string>
 	<key>CFBundleName</key>
 	<string>VocaGlyph</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
@@ -20,5 +24,7 @@
 	<string>VocaGlyph uses the microphone to transcribe your speech into text.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>VocaGlyph requires Speech Recognition to transcribe your voice natively using Apple Intelligence.</string>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>VocaGlyph uses Accessibility to detect your global hotkey and paste transcribed text into your active app.</string>
 </dict>
 </plist>

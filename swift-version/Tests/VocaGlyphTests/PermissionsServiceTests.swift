@@ -1,12 +1,14 @@
 import XCTest
 import AVFoundation
+import Speech
 @testable import VocaGlyph
+
 
 final class MockSystemPermissionsProvider: SystemPermissionsProvider, @unchecked Sendable {
     var microphoneStatus: AVAuthorizationStatus = .notDetermined
     var isAccessibilityTrusted: Bool = false
-    var isFullDiskAccessGranted: Bool = false
-    
+    var speechRecognitionStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
+
     var didRequestMicrophoneAccess = false
     
     func getMicrophoneAuthorizationStatus() -> AVAuthorizationStatus {
@@ -25,13 +27,13 @@ final class MockSystemPermissionsProvider: SystemPermissionsProvider, @unchecked
     func promptAccessibilityTrusted() -> Bool {
         return isAccessibilityTrusted
     }
-    
-    func checkFullDiskAccess() -> Bool {
-        return isFullDiskAccessGranted
+
+    func getSpeechRecognitionAuthorizationStatus() -> SFSpeechRecognizerAuthorizationStatus {
+        return speechRecognitionStatus
     }
-    
-    func promptFullDiskAccess() {
-        // Mock prompt
+
+    func requestSpeechRecognitionAccess() async -> Bool {
+        return speechRecognitionStatus == .authorized
     }
 }
 
@@ -54,26 +56,26 @@ final class PermissionsServiceTests: XCTestCase {
     func testAllPermissionsGranted() {
         mockProvider.microphoneStatus = .authorized
         mockProvider.isAccessibilityTrusted = true
-        mockProvider.isFullDiskAccessGranted = true
-        
+
         XCTAssertTrue(service.isMicrophoneAuthorized)
         XCTAssertTrue(service.isAccessibilityTrusted)
-        XCTAssertTrue(service.isFullDiskAccessGranted)
-        XCTAssertTrue(service.areAllCorePermissionsGranted)
-        
-        // Also test when FDA is false, core permissions should still be granted
-        mockProvider.isFullDiskAccessGranted = false
         XCTAssertTrue(service.areAllCorePermissionsGranted)
     }
     
     func testPermissionsDenied() {
         mockProvider.microphoneStatus = .denied
         mockProvider.isAccessibilityTrusted = false
-        mockProvider.isFullDiskAccessGranted = false
-        
+
         XCTAssertFalse(service.isMicrophoneAuthorized)
         XCTAssertFalse(service.isAccessibilityTrusted)
-        XCTAssertFalse(service.isFullDiskAccessGranted)
+        XCTAssertFalse(service.areAllCorePermissionsGranted)
+    }
+
+    func testMicrophoneGrantedAccessibilityDenied() {
+        mockProvider.microphoneStatus = .authorized
+        mockProvider.isAccessibilityTrusted = false
+
+        XCTAssertTrue(service.isMicrophoneAuthorized)
         XCTAssertFalse(service.areAllCorePermissionsGranted)
     }
 }

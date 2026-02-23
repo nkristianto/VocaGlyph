@@ -12,6 +12,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
     var output: OutputService!
+
+    /// Serial queue used exclusively for AVAudioEngine start/stop.
+    /// Keeps audio operations off the main thread so a slow 
+    /// `engine.start()` on first launch never blocks the main run loop.
+    private let audioQueue = DispatchQueue(label: "com.vocaglyph.audioQueue", qos: .userInteractive)
+
+    /// Signals that an async startRecording() is currently in flight.
+    /// When .processing arrives while this is true we wait for recording
+    /// to fully start before stopping (prevents a stop-before-start race).
+    private var isStartingRecording = false
+
+    /// Pending stop-and-process block queued while startRecording() was still
+    /// in flight. Drained as soon as startRecording() finishes.
+    private var pendingStopBlock: (() -> Void)?
     
     var sharedModelContainer: ModelContainer? = {
         let schema = Schema([
@@ -213,25 +227,64 @@ extension AppDelegate: AppStateManagerDelegate {
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
             button?.image = img?.withSymbolConfiguration(config)
 
-            // Start capturing audio. startRecording() now throws on engine
-            // failure so we can reset state immediately rather than hanging.
-            do {
-                try audioRecorder.startRecording()
-            } catch {
-                Logger.shared.error("AppDelegate: audioRecorder.startRecording() failed — \(error.localizedDescription). Resetting to idle.")
-                stateManager.setIdle()
+            // Run AVAudioEngine.start() on a background serial queue so it never
+            // blocks the main thread. On the very first launch the engine can take
+            // hundreds of milliseconds to settle after mic permission is granted;
+            // doing this on the main thread froze the run loop and prevented the
+            // queued stopRecording() dispatch from ever executing.
+            isStartingRecording = true
+            audioQueue.async { [weak self] in
+                guard let self else { return }
+                do {
+                    try self.audioRecorder.startRecording()
+                } catch {
+                    Logger.shared.error("AppDelegate: audioRecorder.startRecording() failed — \(error.localizedDescription). Resetting to idle.")
+                    DispatchQueue.main.async {
+                        self.isStartingRecording = false
+                        self.pendingStopBlock = nil
+                        self.stateManager.setIdle()
+                    }
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.isStartingRecording = false
+                    // Drain any stop request that arrived while we were starting.
+                    if let stop = self.pendingStopBlock {
+                        self.pendingStopBlock = nil
+                        stop()
+                    }
+                }
             }
+
         case .processing:
             let img = NSImage(systemSymbolName: "hourglass.circle.fill", accessibilityDescription: "processing")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
             button?.image = img?.withSymbolConfiguration(config)
 
-            // Stop capturing audio
-            if let buffer = audioRecorder.stopRecording() {
-                print("Finished capturing audio segment.")
-                stateManager.processAudio(buffer: buffer)
+            // If startRecording() is still in flight (fast key tap), queue the
+            // stop until it finishes. This prevents a stop-before-start race.
+            // stopRecording() runs on the audio queue because bufferQueue.sync{}
+            // and engine.stop() must not block the main thread.
+            let doStop = { [weak self] in
+                guard let self else { return }
+                self.audioQueue.async {
+                    let buffer = self.audioRecorder.stopRecording()
+                    DispatchQueue.main.async {
+                        if let buffer {
+                            Logger.shared.info("AppDelegate: Finished capturing audio segment.")
+                            self.stateManager.processAudio(buffer: buffer)
+                        } else {
+                            self.stateManager.setIdle()
+                        }
+                    }
+                }
+            }
+
+            if isStartingRecording {
+                // Store the stop block; it will be called when startRecording() completes.
+                pendingStopBlock = doStop
             } else {
-                stateManager.setIdle()
+                doStop()
             }
         }
         

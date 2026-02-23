@@ -93,9 +93,10 @@ class OutputService: @unchecked Sendable {
         guard let keyUpEvent = CGEvent(keyboardEventSource: src, virtualKey: keyV, keyDown: false) else { return }
         keyUpEvent.flags = .maskCommand
         
-        // Post events to the system
-        keyDownEvent.post(tap: .cghidEventTap)
-        keyUpEvent.post(tap: .cghidEventTap)
+        // Post events to the session event stream.
+        // .cgSessionEventTap works in the App Sandbox when Accessibility permission is granted.
+        keyDownEvent.post(tap: .cgSessionEventTap)
+        keyUpEvent.post(tap: .cgSessionEventTap)
         
         Logger.shared.info("Cmd+V synthesized via CGEvent!")
     }
