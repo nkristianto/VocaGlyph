@@ -1,6 +1,14 @@
 import AVFoundation
 import Foundation
 
+// MARK: - Config Change Delegate
+
+/// Notified when `AVAudioEngine` must be rebuilt (e.g. after a TCC permission grant
+/// or a hardware reconfiguration triggered by a window focus change).
+protocol AudioRecorderConfigChangeDelegate: AnyObject {
+    func audioRecorderDidLoseConfiguration(_ recorder: AudioRecorderService)
+}
+
 class AudioRecorderService {
     private let engine = AVAudioEngine()
 
@@ -15,8 +23,35 @@ class AudioRecorderService {
     private let bufferLock = NSLock()
     private let bufferQueue = DispatchQueue(label: "com.vocaglyph.audioBuffer", qos: .userInteractive)
 
+    /// Notified when the engine's hardware configuration changes (e.g. after mic permission
+    /// is granted or the Settings window triggers an audio graph reconfiguration).
+    weak var configChangeDelegate: AudioRecorderConfigChangeDelegate?
+
     init() {
         requestPermissions()
+        // Watch for AVAudioEngine I/O reconfigurations (device changes, window focus
+        // transitions, post-TCC permission grants). Without this the engine can become
+        // silently broken and the next startRecording() captures no audio.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleEngineConfigurationChange),
+            name: .AVAudioEngineConfigurationChange,
+            object: engine
+        )
+    }
+
+    @objc private func handleEngineConfigurationChange(_ notification: Notification) {
+        // macOS delivers this notification when the I/O unit is interrupted (e.g. device
+        // change, audio route reconfiguration). The OS has already stopped the engine before
+        // sending it — do NOT call engine.stop() or removeTap() here; they can deadlock with
+        // the audio render thread in some configurations.
+        // startRecording() already tears down and rebuilds the engine graph on every call,
+        // so the next hotkey press will recover automatically.
+        Logger.shared.info("AudioRecorder: AVAudioEngine configuration changed — notifying delegate.")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.configChangeDelegate?.audioRecorderDidLoseConfiguration(self)
+        }
     }
 
     private func requestPermissions() {

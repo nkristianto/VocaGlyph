@@ -44,7 +44,7 @@ class HotkeyService {
     // Debounce window prevents rapid re-triggers caused by audio engine startup
     // latency (~100 ms), where sub-threshold presses always capture 0 frames.
     private var lastActivationTime: CFAbsoluteTime = 0
-    private let debounceInterval: CFAbsoluteTime = 0.2  // 200 ms
+    private let debounceInterval: CFAbsoluteTime = 0.05  // 50 ms — guards against key bounce and rapid double-taps
 
     init(stateManager: AppStateManager) {
         self.stateManager = stateManager
@@ -135,10 +135,13 @@ class HotkeyService {
                 let withinDebounce = (now - lastActivationTime) < debounceInterval
 
                 // Block re-entry if already recording OR if within the debounce window.
-                // The debounce guards against the audio engine startup latency: the engine
-                // needs ~100 ms to deliver its first buffer, so presses shorter than that
-                // always capture 0 frames and we shouldn't immediately allow another start.
-                if !isRecording && !withinDebounce {
+                // Also block (and flash a message) when the engine is still initialising:
+                // the recording would succeed but transcription would immediately fail.
+                if stateManager.currentState == .initializing {
+                    DispatchQueue.main.async {
+                        self.stateManager.flashNotReadyMessage()
+                    }
+                } else if !isRecording && !withinDebounce {
                     isRecording = true
                     lastActivationTime = now
                     DispatchQueue.main.async {

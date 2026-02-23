@@ -524,6 +524,8 @@ struct PostProcessingSettingsView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var editingTemplate: PostProcessingTemplate? = nil
+    @State private var showAddTemplate = false
+    @State private var newTemplateName = ""
 
     var body: some View {
         ZStack {
@@ -585,8 +587,106 @@ struct PostProcessingSettingsView: View {
                 )
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
+
+            // ── Full-panel "New Template" overlay ─────────────────────────
+            if showAddTemplate {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            showAddTemplate = false
+                        }
+                    }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("New Template")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.navy)
+                            Text("Give your template a clear, descriptive name.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        Spacer()
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showAddTemplate = false }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    TextField("e.g. Customer Emails, Technical Docs…", text: $newTemplateName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 14)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.25), lineWidth: 1))
+                        .onSubmit {
+                            if !newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                commitNewTemplate()
+                            }
+                        }
+
+                    HStack(spacing: 12) {
+                        Spacer()
+                        Button("Cancel") {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showAddTemplate = false }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(hex: "#F2EFE9"))
+                        .cornerRadius(6)
+
+                        Button("Create") {
+                            commitNewTemplate()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? Theme.accent.opacity(0.4) : Theme.accent)
+                        .cornerRadius(6)
+                        .disabled(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(24)
+                .frame(width: 400)
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editingTemplate == nil)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showAddTemplate)
+    }
+
+    @MainActor
+    private func commitNewTemplate() {
+        let t = PostProcessingTemplate(
+            name: newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  ? "Untitled" : newTemplateName,
+            isSystem: false
+        )
+        modelContext.insert(t)
+        UserDefaults.standard.set(t.id.uuidString, forKey: TemplateSeederService.activeTemplateKey)
+        showAddTemplate = false
+        newTemplateName = ""
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { editingTemplate = t }
     }
     
     @ViewBuilder
@@ -1163,11 +1263,15 @@ struct PostProcessingSettingsView: View {
 
     @ViewBuilder
     private var templateSection: some View {
-        TemplateListSection(onEdit: { template in
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                editingTemplate = template
+        TemplateListSection(
+            onEdit: { template in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { editingTemplate = template }
+            },
+            onAddTemplate: {
+                newTemplateName = ""
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { showAddTemplate = true }
             }
-        })
+        )
     }
 
     @ViewBuilder
@@ -1725,10 +1829,8 @@ struct TemplateListSection: View {
 
     /// Called when the user taps Edit on a template. Parent handles presenting the editor.
     let onEdit: (PostProcessingTemplate) -> Void
-
-    // "New template" name entry overlay state
-    @State private var showAddTemplate = false
-    @State private var newTemplateName = ""
+    /// Called when the user taps "New Template". Parent handles presenting the card.
+    let onAddTemplate: () -> Void
 
     var body: some View {
         ZStack {
@@ -1793,8 +1895,7 @@ struct TemplateListSection: View {
                 }
 
                 Button {
-                    newTemplateName = ""
-                    withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = true }
+                    onAddTemplate()
                 } label: {
                     Label("New Template", systemImage: "plus.circle")
                         .font(.system(size: 12, weight: .medium))
@@ -1803,98 +1904,10 @@ struct TemplateListSection: View {
                 .buttonStyle(.plain)
             }
             .padding(16)
-
-            // ── "New Template" name entry overlay ─────────────────────────
-            if showAddTemplate {
-                Color.black.opacity(0.15)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
-                    }
-
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("New Template")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Theme.navy)
-                            Text("Give your template a clear, descriptive name.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textMuted)
-                        }
-                        Spacer()
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(Theme.textMuted)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    TextField("e.g. Customer Emails, Technical Docs…", text: $newTemplateName)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13))
-                        .onSubmit {
-                            if !newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                createAndEditTemplate()
-                            }
-                        }
-
-                    HStack(spacing: 12) {
-                        Spacer()
-                        Button("Cancel") {
-                            withAnimation(.easeInOut(duration: 0.2)) { showAddTemplate = false }
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.navy)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color(hex: "#F2EFE9"))
-                        .cornerRadius(6)
-
-                        Button("Create") {
-                            createAndEditTemplate()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? Theme.accent.opacity(0.4) : Theme.accent)
-                        .cornerRadius(6)
-                        .disabled(newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(24)
-                .frame(width: 380)
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
-            }
         }
-        .animation(.easeInOut(duration: 0.2), value: showAddTemplate)
-    }
-
-
-    private func createAndEditTemplate() {
-        let t = PostProcessingTemplate(
-            name: newTemplateName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                  ? "Untitled" : newTemplateName,
-            isSystem: false
-        )
-        modelContext.insert(t)
-        activeTemplateIdString = t.id.uuidString
-        showAddTemplate = false
-        onEdit(t)
     }
 }
+
 
 // MARK: - TemplateEditorCard
 
@@ -2255,9 +2268,15 @@ struct TemplateEditorCard: View {
             }
 
             TextField("e.g. Remove filler words: um, uh, like", text: $newRuleText, axis: .vertical)
-                .lineLimit(2...4)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .lineLimit(3...5)
                 .font(.system(size: 13))
+                .foregroundStyle(Theme.navy)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.white)
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.25), lineWidth: 1))
                 .onSubmit {
                     if !newRuleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         commitAddRule()

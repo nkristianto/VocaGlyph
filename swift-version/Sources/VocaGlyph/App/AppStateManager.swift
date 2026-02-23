@@ -18,8 +18,49 @@ protocol AppStateManagerDelegate: AnyObject {
 class AppStateManager: ObservableObject, @unchecked Sendable {
     weak var delegate: AppStateManagerDelegate?
     var engineRouter: EngineRouter?
-    var sharedWhisper: WhisperService?
+
+    /// The shared WhisperService instance. Setting this automatically subscribes
+    /// to its loading progress so the overlay can reflect real-time ETA without
+    /// passing WhisperService everywhere.
+    var sharedWhisper: WhisperService? {
+        didSet { bindWhisperProgress() }
+    }
+
     var postProcessingEngine: (any PostProcessingEngine)?
+
+    // MARK: - Combine
+    private var whisperCancellables: Set<AnyCancellable> = []
+
+    /// 0.0 → 1.0 forwarded from WhisperService.loadingProgress.
+    @Published var whisperLoadingProgress: Double = 0.0
+    /// ETA countdown forwarded from WhisperService.loadingEstimatedSeconds.
+    @Published var whisperLoadingETA: Int = 0
+
+    /// Non-nil briefly when the user presses the hotkey while the engine is still loading.
+    /// Cleared automatically after 3 seconds.
+    @Published var notReadyMessage: String? = nil
+
+    private func bindWhisperProgress() {
+        whisperCancellables.removeAll()
+        guard let whisper = sharedWhisper else { return }
+        whisper.$loadingProgress
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.whisperLoadingProgress, on: self)
+            .store(in: &whisperCancellables)
+        whisper.$loadingEstimatedSeconds
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.whisperLoadingETA, on: self)
+            .store(in: &whisperCancellables)
+    }
+
+    /// Flash a "model still loading" message in the overlay for 3 seconds.
+    /// Called by HotkeyService when the hotkey fires during .initializing state.
+    func flashNotReadyMessage() {
+        notReadyMessage = "WhisperKit is still loading. Try again in a moment."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.notReadyMessage = nil
+        }
+    }
 
     /// SwiftData context injected by AppDelegate after ModelContainer is ready.
     /// Used by `buildActiveTemplatePrompt()` to fetch the active template at call-time.

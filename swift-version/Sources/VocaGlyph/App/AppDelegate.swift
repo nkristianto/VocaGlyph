@@ -83,6 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize Core Services
         stateManager.delegate = self
         audioRecorder = AudioRecorderService()
+        audioRecorder.configChangeDelegate = self
         whisper = WhisperService()
         whisper.delegate = self
         stateManager.sharedWhisper = whisper // Let AppStateManager reuse this single instance
@@ -173,6 +174,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Bring app to front so it has focus and can intercept clicks
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+}
+
+extension AppDelegate: AudioRecorderConfigChangeDelegate {
+    func audioRecorderDidLoseConfiguration(_ recorder: AudioRecorderService) {
+        // Already called on main thread from the handler's DispatchQueue.main.async.
+        guard stateManager.currentState == .recording ||
+              stateManager.currentState == .processing else { return }
+        Logger.shared.info("AppDelegate: Audio engine lost configuration mid-recording — resetting to idle.")
+        stateManager.setIdle()
     }
 }
 

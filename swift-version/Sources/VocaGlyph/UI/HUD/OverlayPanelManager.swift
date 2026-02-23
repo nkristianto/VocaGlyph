@@ -12,7 +12,7 @@ class OverlayPanelManager {
         hostingController.view.backgroundFilters = [] // ensure view background is clear to allow panel transparency
         
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 230, height: 48),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 120),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -41,7 +41,7 @@ class OverlayPanelManager {
                 if let _ = panel.contentViewController?.view,
                    let hc = panel.contentViewController as? NSHostingController<RecordingOverlayView> {
                     if hc.rootView.stateManager.currentState == .idle {
-                        panel.close()
+                        panel.orderOut(nil)
                     }
                 }
             }

@@ -17,6 +17,16 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     
     @Published var activeModel: String = ""
     @Published var loadingModel: String? = nil
+
+    /// Simulated 0.0→1.0 loading progress (time-extrapolated, since CoreML specialisation
+    /// has no progress callback). Snaps to 1.0 when the model is actually ready.
+    @Published var loadingProgress: Double = 0.0
+    /// Countdown in seconds until estimated model load completion.
+    @Published var loadingEstimatedSeconds: Int = 0
+
+    private var loadingTimer: Timer?
+    /// Calibrated estimate for large-v3-turbo on Apple Silicon. Shown as ETA upper-bound.
+    private let estimatedLoadSeconds: Double = 35.0
     
     // Fetch from UserDefaults or fallback to recommended model
     private var defaultModelName: String {
@@ -148,6 +158,8 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 self.downloadState = "Loading into memory..."
                 self.loadingModel = modelName
             }
+
+            startLoadingProgressTimer()
             
             // On-disk folder name depends on the model prefix convention
             let folderName = modelName.hasPrefix("distil-whisper_")
@@ -177,7 +189,8 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             )
             whisperKit = try await WhisperKit(config)
             isReady = true
-            
+
+            stopLoadingProgressTimer()
             Logger.shared.info("WhisperService: WhisperKit is ready using model: \(modelName)")
             
             DispatchQueue.main.async {
@@ -189,6 +202,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             
             delegate?.whisperServiceDidUpdateState("Ready")
         } catch {
+            stopLoadingProgressTimer()
             Logger.shared.error("WhisperService: Failed to initialize WhisperKit: \(error.localizedDescription)")
             DispatchQueue.main.async {
                 self.loadingModel = nil
@@ -198,6 +212,33 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     }
     
     // MARK: - Dynamic Configuration
+
+    // MARK: - Loading Progress Timer
+
+    private func startLoadingProgressTimer() {
+        DispatchQueue.main.async { self.loadingProgress = 0.0 }
+        let start = Date()
+        loadingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let elapsed = Date().timeIntervalSince(start)
+            // Approach 95% asymptotically — final 5% snaps to 1.0 when truly done.
+            let progress = min(elapsed / self.estimatedLoadSeconds, 0.95)
+            let remaining = max(Int(self.estimatedLoadSeconds - elapsed), 0)
+            DispatchQueue.main.async {
+                self.loadingProgress = progress
+                self.loadingEstimatedSeconds = remaining
+            }
+        }
+    }
+
+    private func stopLoadingProgressTimer() {
+        loadingTimer?.invalidate()
+        loadingTimer = nil
+        DispatchQueue.main.async {
+            self.loadingProgress = 1.0
+            self.loadingEstimatedSeconds = 0
+        }
+    }
     func changeModel(to modelName: String) {
         Logger.shared.info("WhisperService: Requested model change to '\(modelName)'")
         // Only load the engine if the model is actually downloaded.
