@@ -156,7 +156,26 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             let modelPath = actualModelsDirectory.appendingPathComponent(folderName)
             
             Logger.shared.info("WhisperService: Model available at \(modelPath). Loading into memory...")
-            whisperKit = try await WhisperKit(modelFolder: modelPath.path)
+
+            // Explicitly route large model components to the Apple Neural Engine (ANE).
+            // Using WhisperKit(modelFolder:) leaves compute unit selection to CoreML which may
+            // fall back to CPU for heavy layers. cpuAndNeuralEngine gives 3-5× encoder speedup
+            // on Apple Silicon vs the default auto-selection.
+            // prewarm: true triggers CoreML on-device specialisation immediately so there
+            // is no "slow first transcription" penalty when the user first presses the hotkey.
+            let config = WhisperKitConfig(
+                modelFolder: modelPath.path,
+                computeOptions: ModelComputeOptions(
+                    melCompute: .cpuAndNeuralEngine,
+                    audioEncoderCompute: .cpuAndNeuralEngine,
+                    textDecoderCompute: .cpuAndNeuralEngine,
+                    prefillCompute: .cpuOnly     // prefill is tiny — CPU is fine
+                ),
+                verbose: false,                  // suppress WhisperKit internal logs
+                logLevel: .none,
+                prewarm: true                    // triggers CoreML on-device specialisation early
+            )
+            whisperKit = try await WhisperKit(config)
             isReady = true
             
             Logger.shared.info("WhisperService: WhisperKit is ready using model: \(modelName)")
@@ -306,8 +325,14 @@ extension WhisperService: TranscriptionEngine {
         // - Explicit language (e.g. "en", "id"): usePrefillPrompt=true → forces language tokens
         // - Auto-Detect (nil): usePrefillPrompt=false + detectLanguage=true → standard auto-detect
         let isExplicitLanguage = langCode != nil
+        // Start greedy (temperature 0) for fastest decode path.
+        // Cap fallback retries to 1 (default is 5) — each retry runs a full decoder pass.
+        // For short dictation audio with a nearby microphone, the first greedy pass
+        // almost always succeeds, so 5 retries are wasteful.
         let decodingOptions = DecodingOptions(
             language: langCode,
+            temperature: 0.0,
+            temperatureFallbackCount: 1,
             usePrefillPrompt: isExplicitLanguage,
             usePrefillCache: true,
             detectLanguage: isExplicitLanguage ? false : nil, // nil = WhisperKit defaults (auto-detect when prefill off)
