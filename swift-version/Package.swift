@@ -10,31 +10,34 @@ let package = Package(
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
-        .executable(
-            name: "VocaGlyph",
-            targets: ["VocaGlyph"]),
+        .library(
+            name: "VocaGlyphLib",
+            targets: ["VocaGlyphLib"]),
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm", branch: "main")
+        // Local clone used to avoid GitHub auth issues in Xcode's SPM resolver
+        .package(path: "../mlx-swift-lm"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
-        .executableTarget(
-            name: "VocaGlyph",
+        .target(
+            name: "VocaGlyphLib",
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
-                .product(name: "MLXLMCommon", package: "mlx-swift-lm")
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
             ],
+            path: "Sources/VocaGlyph", // source folder kept as-is, only module name changes
+            exclude: ["App/main.swift"], // Entry point handled by Xcode app target via @NSApplicationDelegateAdaptor
             resources: [
                 .process("Resources")
             ]
         ),
         .testTarget(
             name: "VocaGlyphTests",
-            dependencies: ["VocaGlyph"]
+            dependencies: ["VocaGlyphLib"]
         ),
     ]
 )

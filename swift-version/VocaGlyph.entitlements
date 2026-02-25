@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Required for Mac App Store -->
+	<!-- Required for Mac App Store & sandbox -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 
@@ -16,16 +16,12 @@
 	<key>com.apple.security.network.client</key>
 	<true/>
 
-	<!-- Hardened Runtime — required for notarization & App Store -->
-	<key>com.apple.security.cs.hardened-runtime</key>
-	<true/>
-
-	<!-- Temporary exception: allow CGEvent tap in session for hotkeys and paste.
+	<!-- Temporary exception: allow CGEvent tap for hotkeys and paste.
 	     Accessibility permission (granted by user via System Settings) enables this. -->
 	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
 	<array>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
+		<string>com.vocaglyph.app-spks</string>
+		<string>com.vocaglyph.app-spki</string>
 	</array>
 </dict>
 </plist>

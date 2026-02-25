@@ -136,7 +136,10 @@ class AudioRecorderService {
         recordedData.removeAll()
         bufferLock.unlock()
 
-        Logger.shared.info("AudioRecorder: Stopped — captured \(data.count) frames at 16 kHz")
+        // [DIAG] Step 2 — compare this count between SPM build and Xcode build for the same speech duration.
+        // If significantly lower in the Xcode build → audio pipeline is being cut short (H1) or mic is silent (H3).
+        let durationSecs = Float(data.count) / Float(targetSampleRate)
+        Logger.shared.info("AudioRecorder: Stopped — captured \(data.count) frames at 16 kHz (≈\(String(format: "%.2f", durationSecs))s)")
 
         guard !data.isEmpty else { return nil }
 
@@ -196,6 +199,13 @@ class AudioRecorderService {
             return
         }
 
+        // [DIAG] Step 3 — RMS of converted buffer. Near-zero RMS = mic permission denied / silent capture (H3).
+        if let f = targetBuffer.floatChannelData {
+            let count = Int(targetBuffer.frameLength)
+            guard count > 0 else { return }
+            let rms = sqrt(UnsafeBufferPointer(start: f[0], count: count).reduce(Float(0)) { $0 + $1 * $1 } / Float(count))
+            Logger.shared.debug("AudioRecorder: [DIAG] Buffer RMS = \(String(format: "%.5f", rms)) (\(count) frames)")
+        }
         appendBufferData(targetBuffer)
     }
 

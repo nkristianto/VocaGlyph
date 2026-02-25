@@ -33,19 +33,30 @@ struct RecordingOverlayView: View {
                                         .foregroundStyle(Theme.navy)
                                 }
 
-                                // Progress bar
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        Capsule()
-                                            .fill(Color.black.opacity(0.08))
-                                            .frame(height: 3)
-                                        Capsule()
-                                            .fill(Theme.accent)
-                                            .frame(width: geo.size.width * stateManager.whisperLoadingProgress, height: 3)
-                                            .animation(.linear(duration: 0.5), value: stateManager.whisperLoadingProgress)
+                                // Progress bar: .overlay on the gray track ensures the blue
+                                // fill inherits its exact bounds. Using ZStack+GeometryReader
+                                // was placing them in separate layout passes, making two
+                                // visually distinct bars.
+                                Capsule()
+                                    .fill(Color.black.opacity(0.08))
+                                    .frame(height: 3)
+                                    .overlay(alignment: .leading) {
+                                        GeometryReader { geo in
+                                            Capsule()
+                                                .fill(Theme.accent)
+                                                .frame(
+                                                    width: geo.size.width * stateManager.whisperLoadingProgress,
+                                                    height: 3
+                                                )
+                                        }
+                                        .frame(height: 3)
+                                        .animation(
+                                            stateManager.whisperLoadingProgress > 0
+                                                ? .linear(duration: 0.5)
+                                                : .none,
+                                            value: stateManager.whisperLoadingProgress
+                                        )
                                     }
-                                }
-                                .frame(height: 3)
 
                                 // ETA label
                                 if stateManager.whisperLoadingETA > 1 {

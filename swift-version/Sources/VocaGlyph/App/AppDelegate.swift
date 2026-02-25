@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 import SwiftData
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var settingsWindow: NSWindow!
     
@@ -12,6 +12,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
     var output: OutputService!
+    
+    public override init() {
+        super.init()
+    }
 
     /// Serial queue used exclusively for AVAudioEngine start/stop.
     /// Keeps audio operations off the main thread so a slow 
@@ -46,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var permissionsService = PermissionsService()
     var onboardingWindow: NSWindow?
 
-    func applicationDidFinishLaunching(_ aNotification: Notification) {
+    public func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Hide application from dock and cmd-tab switcher
         NSApp.setActivationPolicy(.accessory)
         
@@ -58,14 +62,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func showOnboardingWindow() {
-        let onboardingView = OnboardingView(permissionsService: permissionsService) { [weak self] in
+        // Switch to .regular so the onboarding NSWindow can become a true key window.
+        // With .accessory policy the app never fully activates and SwiftUI buttons
+        // inside the window are completely unresponsive (they never receive key events).
+        // We switch back to .accessory in initializeCoreServices() once onboarding is done.
+        NSApp.setActivationPolicy(.regular)
+
+        let onboardingView = OnboardingView(permissionsService: permissionsService, onComplete: { [weak self] in
             DispatchQueue.main.async {
-                self?.onboardingWindow?.close()
+                // orderOut hides the window WITHOUT firing windowWillClose.
+                // This avoids the need for any "completed" flag gymnastics —
+                // windowWillClose now only fires from the user's red ✕ button.
+                self?.onboardingWindow?.orderOut(nil)
                 self?.onboardingWindow = nil
                 self?.initializeCoreServices()
                 self?.toggleSettingsWindow(nil) // Open Settings after onboarding
             }
-        }
+        })
         
         let hostingController = NSHostingController(rootView: onboardingView)
         onboardingWindow = NSWindow(
@@ -76,6 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         onboardingWindow?.center()
         onboardingWindow?.isReleasedWhenClosed = false
+        onboardingWindow?.delegate = self
         onboardingWindow?.contentViewController = hostingController
         onboardingWindow?.title = "Welcome to VocaGlyph"
         onboardingWindow?.titleVisibility = .hidden
@@ -87,6 +101,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @MainActor func initializeCoreServices() {
+        // Revert to accessory policy now that onboarding is done —
+        // the app runs as a menu-bar agent with no Dock icon.
+        NSApp.setActivationPolicy(.accessory)
+
         // Seed default post-processing templates if this is a first launch
         if let container = sharedModelContainer {
             let context = container.mainContext
@@ -95,6 +113,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Initialize Core Services
+        // Setup Overlay Panel FIRST — must exist before startEngine() fires .initializing
+        // state changes. Moving this below startEngine() means the panel is still nil
+        // when the first updateVisibility(for:) call arrives on cold launch.
+        OverlayPanelManager.shared.setupPanel(with: stateManager)
+
         stateManager.delegate = self
         audioRecorder = AudioRecorderService()
         audioRecorder.configChangeDelegate = self
@@ -140,11 +163,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            if let imgUrl = Bundle.module.url(forResource: "appbaricon", withExtension: "png"),
-               let nsImage = NSImage(contentsOf: imgUrl) {
-                // Ensure proper sizing for the status bar
+            let imgUrl = Bundle.main.url(forResource: "appbaricon", withExtension: "png")
+                      ?? Bundle.module.url(forResource: "appbaricon", withExtension: "png")
+            Logger.shared.info("AppDelegate: appbaricon URL = \(String(describing: imgUrl))")
+            if let imgUrl, let nsImage = NSImage(contentsOf: imgUrl) {
+                // Resize to menu bar icon dimensions
                 nsImage.size = NSSize(width: 18, height: 18)
-                nsImage.isTemplate = true // Allows macOS to tint it for light/dark mode
+                // isTemplate = false for full-color PNGs.
+                // Use true only if the icon is a black+transparent template design.
+                nsImage.isTemplate = false
                 button.image = nsImage
             } else {
                 button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VocaGlyph")
@@ -163,9 +190,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitMenuItem)
         
         statusItem.menu = menu
-        
-        // Setup Overlay Panel for Recording
-        OverlayPanelManager.shared.setupPanel(with: stateManager)
     }
     
     @objc func simulateRecording() {
@@ -191,6 +215,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// MARK: - NSWindowDelegate
+extension AppDelegate: NSWindowDelegate {
+    public func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === onboardingWindow else { return }
+        // The user closed the onboarding window via the red ✕ button before completing
+        // setup. Because the app runs with .accessory activation policy (no Dock icon,
+        // no menu bar until core services are initialized), there is no other way for
+        // the user to quit. Terminate cleanly.
+        // NOTE: this fires ONLY for red-X closes because Continue now uses orderOut()
+        // instead of close(), which does NOT trigger windowWillClose.
+        NSApp.terminate(nil)
+    }
+}
+
 extension AppDelegate: AudioRecorderConfigChangeDelegate {
     func audioRecorderDidLoseConfiguration(_ recorder: AudioRecorderService) {
         // Already called on main thread from the handler's DispatchQueue.main.async.
@@ -210,10 +249,11 @@ extension AppDelegate: AppStateManagerDelegate {
         case .idle:
             // Let HotkeyService know it can accept the next hotkey press.
             hotkeyService.resetToIdle()
-            if let imgUrl = Bundle.module.url(forResource: "appbaricon", withExtension: "png"),
+            if let imgUrl = Bundle.main.url(forResource: "appbaricon", withExtension: "png")
+                         ?? Bundle.module.url(forResource: "appbaricon", withExtension: "png"),
                let nsImage = NSImage(contentsOf: imgUrl) {
                 nsImage.size = NSSize(width: 18, height: 18)
-                nsImage.isTemplate = true
+                nsImage.isTemplate = false
                 button?.image = nsImage
             } else {
                 button?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VocaGlyph")

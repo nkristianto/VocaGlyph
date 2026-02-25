@@ -3,7 +3,7 @@ import Speech
 
 struct OnboardingView: View {
     @State private var permissionsService: PermissionsService
-    var onContinue: () -> Void
+    var onComplete: () -> Void
 
     // UI state for reactive updates
     @State private var isMicrophoneGranted = false
@@ -13,9 +13,9 @@ struct OnboardingView: View {
     // Timer to poll for external permission changes (like System Settings)
     let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
-    init(permissionsService: PermissionsService, onContinue: @escaping () -> Void) {
+    init(permissionsService: PermissionsService, onComplete: @escaping () -> Void) {
         self._permissionsService = State(initialValue: permissionsService)
-        self.onContinue = onContinue
+        self.onComplete = onComplete
     }
 
     var allGranted: Bool {
@@ -85,7 +85,7 @@ struct OnboardingView: View {
 
             Spacer()
 
-            Button(action: onContinue) {
+            Button(action: onComplete) {
                 Text("Continue")
             }
             .buttonStyle(ContinueButtonStyle())
@@ -112,7 +112,14 @@ struct OnboardingView: View {
     private func requestMicrophone() {
         Task {
             _ = await permissionsService.requestMicrophoneAccess()
-            await MainActor.run { refreshPermissions() }
+            await MainActor.run {
+                refreshPermissions()
+                // If still not granted after the request, permission is denied or restricted.
+                // System won't show a dialog again — guide the user to System Settings.
+                if !isMicrophoneGranted {
+                    openSystemSettings(pane: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                }
+            }
         }
     }
 
@@ -120,7 +127,6 @@ struct OnboardingView: View {
         _ = permissionsService.promptAccessibilityTrusted()
         openSystemSettings(pane: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
-
 
     private func requestSpeechRecognition() {
         Task {

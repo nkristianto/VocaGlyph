@@ -1237,24 +1237,28 @@ struct PostProcessingSettingsView: View {
             Divider().background(Theme.textMuted.opacity(0.1))
         }
 
-        // ── Free RAM row ─────────────────────────────────────────────────
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Free Model Memory")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Theme.navy)
-                Text("Unload weights from RAM. Model stays on disk and reloads on next use.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textMuted)
+        // ── Free RAM row — only show when model is actually loaded in memory ──
+        if stateManager.localLLMIsWarmedUp {
+            Divider().background(Theme.textMuted.opacity(0.1))
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Free Model Memory")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Theme.navy)
+                    Text("Unload weights from RAM. Model stays on disk and reloads on next use.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                Button("Free RAM") {
+                    Task { await stateManager.unloadLocalLLMEngine() }
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
             }
-            Spacer()
-            Button("Free RAM") {
-                Task { await stateManager.unloadLocalLLMEngine() }
-            }
-            .buttonStyle(.bordered)
-            .tint(.orange)
+            .padding(16)
         }
-        .padding(16)
     }
 
 

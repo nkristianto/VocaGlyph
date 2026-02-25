@@ -179,7 +179,13 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             let selectedLocalModel = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
             Logger.shared.info("AppStateManager: Switching post-processing engine to LocalLLMEngine (model: \(selectedLocalModel))")
             self.postProcessingEngine = localLLMEngine
-            Task { self.localLLMIsDownloaded = await localLLMEngine.isModelDownloaded() }
+            // isModelDownloaded() is actor-isolated — await it and then update the
+            // @Published property on the main thread to avoid 'Publishing from background
+            // threads is not allowed' runtime warnings.
+            Task {
+                let downloaded = await localLLMEngine.isModelDownloaded()
+                await MainActor.run { self.localLLMIsDownloaded = downloaded }
+            }
         } else {
             self.postProcessingEngine = nil
         }
@@ -316,6 +322,11 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     /// Never call `localLLMEngine.unloadModel()` directly from UI — always go through the Orchestrator.
     public func unloadLocalLLMEngine() async {
         await localLLMEngine.unloadModel()
+        // Reset warm-up flag so the UI reflects the eviction:
+        // "Model ready in memory" → "Model downloaded"
+        await MainActor.run {
+            self.localLLMIsWarmedUp = false
+        }
     }
 
     /// Downloads and loads the local LLM model into Unified Memory, reporting progress

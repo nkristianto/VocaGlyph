@@ -2,29 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleExecutable</key>
-	<string>VocaGlyph</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.vocaglyph.app</string>
-	<key>CFBundleName</key>
-	<string>VocaGlyph</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>LSUIElement</key>
-	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>VocaGlyph uses the microphone to transcribe your speech into text.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>VocaGlyph requires Speech Recognition to transcribe your voice natively using Apple Intelligence.</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>VocaGlyph uses Accessibility to detect your global hotkey and paste transcribed text into your active app.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VocaGlyph uses the microphone to transcribe your speech into text.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
 </dict>
 </plist>

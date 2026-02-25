@@ -145,12 +145,18 @@ class WhisperService: ObservableObject, @unchecked Sendable {
         
         let available = getDownloadedModelsSync()
         if available.contains(defaultModelName) {
+            // Fire the delegate BEFORE loading so AppDelegate can transition to
+            // .initializing and show the loading overlay. Without this, autoInitialize
+            // silently loads the model and only fires "Ready" at the end — the overlay
+            // never appears on launch because setInitializing() is never triggered.
+            delegate?.whisperServiceDidUpdateState("Processing")
             await initializeWhisper(modelName: defaultModelName)
         } else if let firstAvailable = available.first {
             // Fallback to whichever model is available so the user isn't outright broken
             DispatchQueue.main.async {
                 self.downloadState = "Falling back to \(firstAvailable)..."
             }
+            delegate?.whisperServiceDidUpdateState("Processing")
             await initializeWhisper(modelName: firstAvailable)
         } else {
             DispatchQueue.main.async {
@@ -213,13 +219,17 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 logLevel: .none,
                 prewarm: true                    // triggers CoreML on-device specialisation early
             )
-            whisperKit = try await WhisperKit(config)
-            isReady = true
+            let loadedKit = try await WhisperKit(config)
 
             stopLoadingProgressTimer()
             Logger.shared.info("WhisperService: WhisperKit is ready using model: \(modelName)")
-            
+
+            // All @Published mutations must happen on the main thread to avoid the
+            // "Publishing from background threads" runtime warning and the race where
+            // isReady=true becomes visible before whisperKit is written.
             DispatchQueue.main.async {
+                self.whisperKit = loadedKit
+                self.isReady = true
                 self.activeModel = modelName
                 UserDefaults.standard.set(modelName, forKey: "selectedModel")
                 self.loadingModel = nil
@@ -242,20 +252,32 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     // MARK: - Loading Progress Timer
 
     private func startLoadingProgressTimer() {
-        DispatchQueue.main.async { self.loadingProgress = 0.0 }
-        let start = Date()
-        loadingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        // IMPORTANT: Timer.scheduledTimer must be called on the main thread to be
+        // scheduled on the main run loop. When `initializeWhisper` runs inside an
+        // async Task, the current thread is from Swift's cooperative thread pool —
+        // its run loop never runs, so timers created there never fire.
+        DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let elapsed = Date().timeIntervalSince(start)
-            // Approach 95% asymptotically — final 5% snaps to 1.0 when truly done.
-            let progress = min(elapsed / self.estimatedLoadSeconds, 0.95)
-            let remaining = max(Int(self.estimatedLoadSeconds - elapsed), 0)
-            DispatchQueue.main.async {
-                self.loadingProgress = progress
-                self.loadingEstimatedSeconds = remaining
+            self.loadingProgress = 0.0
+            self.loadingEstimatedSeconds = Int(self.estimatedLoadSeconds)
+            let start = Date()
+            self.loadingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                let elapsed = Date().timeIntervalSince(start)
+                // Asymptotic formula: progress = 1 - e^(-elapsed/τ)
+                // Unlike a linear cap (e.g. min(t/35, 0.95)), this ALWAYS keeps moving
+                // forward no matter how long the load takes — it just decelerates.
+                // With τ=35s: ~13% at 5s, ~35% at 15s, ~63% at 35s, ~87% at 70s.
+                // Snaps to 1.0 only when stopLoadingProgressTimer() is called.
+                self.loadingProgress = 1.0 - exp(-elapsed / self.estimatedLoadSeconds)
+                // Only show ETA countdown while still within the expected window.
+                // Past that, hide it (show nothing) rather than displaying a negative number.
+                let remaining = Int(self.estimatedLoadSeconds - elapsed)
+                self.loadingEstimatedSeconds = remaining > 0 ? remaining : 0
             }
         }
     }
+
 
     private func stopLoadingProgressTimer() {
         loadingTimer?.invalidate()
@@ -395,7 +417,12 @@ extension WhisperService: TranscriptionEngine {
         let frameLength = Int(audioBuffer.frameLength)
         let channelData = UnsafeBufferPointer<Float>(start: floatChannelData[0], count: frameLength)
         let audioArray = Array(channelData)
-        
+
+        // [DIAG] Step 2 — compare this between SPM build and Xcode build for the same speech duration.
+        // Lower sample count in Xcode build = audio pipeline being cut short (H1) or mic silent (H3).
+        let inputDurationSecs = Float(audioArray.count) / 16000.0
+        Logger.shared.info("WhisperService: [DIAG] Input: \(audioArray.count) samples (≈\(String(format: "%.2f", inputDurationSecs))s)")
+
         let langCode = dictationLanguageCode
         let langDescription = langCode ?? "auto-detect"
         Logger.shared.info("WhisperService: Starting transcription on \(audioArray.count) frames using language: \(langDescription)")
