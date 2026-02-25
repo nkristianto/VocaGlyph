@@ -12,7 +12,6 @@ import SwiftData
 /// |-------------------------|----------|-------------------|
 /// | General Cleanup         | true     | ✅ yes             |
 /// | Meeting Notes           | true     | no                |
-/// | Raw — No Processing     | true     | no                |
 ///
 /// Call `seedDefaultTemplatesIfNeeded(context:)` once from `AppDelegate`
 /// inside `initializeCoreServices()`, after the `ModelContainer` is ready.
@@ -29,6 +28,10 @@ public enum TemplateSeederService {
     ///
     /// - Parameter context: The `ModelContext` to use for insertion.
     public static func seedDefaultTemplatesIfNeeded(context: ModelContext) {
+        // Always clean up the "Raw — No Processing" template if it exists from a
+        // previous install — it is no longer offered as an option.
+        removeRawTemplateIfPresent(context: context)
+
         let descriptor = FetchDescriptor<PostProcessingTemplate>()
         let existingCount = (try? context.fetchCount(descriptor)) ?? 0
         guard existingCount == 0 else {
@@ -40,15 +43,13 @@ public enum TemplateSeederService {
 
         let generalCleanup = makeGeneralCleanup()
         let meetingNotes = makeMeetingNotes()
-        let rawNoProcessing = makeRawNoProcessing()
 
         context.insert(generalCleanup)
         context.insert(meetingNotes)
-        context.insert(rawNoProcessing)
 
         do {
             try context.save()
-            Logger.shared.info("TemplateSeederService: Seeded 3 default templates.")
+            Logger.shared.info("TemplateSeederService: Seeded 2 default templates.")
 
             // Activate "General Cleanup" by default
             UserDefaults.standard.set(generalCleanup.id.uuidString, forKey: activeTemplateKey)
@@ -58,17 +59,41 @@ public enum TemplateSeederService {
         }
     }
 
-    // MARK: - Template Factories
+    // MARK: - Migration
+
+    /// Deletes the "Raw — No Processing" system template from the store if present.
+    /// Called on every launch so existing users are migrated automatically.
+    private static func removeRawTemplateIfPresent(context: ModelContext) {
+        let rawName = "Raw — No Processing"
+        let descriptor = FetchDescriptor<PostProcessingTemplate>(
+            predicate: #Predicate { $0.name == rawName }
+        )
+        guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return }
+        for template in matches {
+            // If this was the active template, clear the active key so the app
+            // doesn't reference a deleted ID.
+            if let activeId = UserDefaults.standard.string(forKey: activeTemplateKey),
+               activeId == template.id.uuidString {
+                UserDefaults.standard.removeObject(forKey: activeTemplateKey)
+                Logger.shared.info("TemplateSeederService: Cleared active template key (was pointing to Raw template).")
+            }
+            context.delete(template)
+        }
+        try? context.save()
+        Logger.shared.info("TemplateSeederService: Removed \(matches.count) 'Raw — No Processing' template(s).")
+    }
 
     private static func makeGeneralCleanup() -> PostProcessingTemplate {
         let ruleTexts = [
-            "Fix grammar and capitalization.",
-            "Remove filler words: um, uh, you know, like, basically, literally, actually.",
-            "End the text with proper punctuation.",
+            "Remove filler words: uh, um, like, you know, I mean, I guess, so, actually, basically, literally.",
+            "Fix capitalization and punctuation.",
+            "Self-corrections: keep only the corrected wording and drop the original attempt.",
+            "Keep all sentences and meaning. Never answer questions or add any information.",
+            "Output only the cleaned text.",
         ]
         let template = PostProcessingTemplate(
             name: "General Cleanup",
-            templateDescription: "Fixes grammar, removes filler words, and adds punctuation.",
+            templateDescription: "Removes fillers, fixes capitalization and punctuation, and preserves all meaning.",
             isSystem: true,
             defaultRules: ruleTexts
         )
@@ -98,17 +123,6 @@ public enum TemplateSeederService {
             rule.template = template
             template.rules.append(rule)
         }
-        return template
-    }
-
-    private static func makeRawNoProcessing() -> PostProcessingTemplate {
-        // No rules → TemplatePromptRenderer.render() returns "" → post-processing skipped
-        let template = PostProcessingTemplate(
-            name: "Raw — No Processing",
-            templateDescription: "Passes transcription through unchanged. No AI refinement applied.",
-            isSystem: true,
-            defaultRules: []
-        )
         return template
     }
 }

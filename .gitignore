@@ -1,3 +1,7 @@
 build/bin
 node_modules
 frontend/dist
+_bmad/
+_bmad-output/
+.agent/
+[outdated]/

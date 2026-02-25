@@ -1,5 +1,6 @@
 import Foundation
 import Hub
+import MLX
 import MLXLLM
 import MLXLMCommon
 
@@ -88,6 +89,12 @@ public final class MLXLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
     public func evict() {
         cachedContainer = nil
         cachedModelId = nil
+        // Immediately flush MLX's GPU buffer pool so the multi-GB Metal buffers
+        // that accumulate during inference are returned to the OS right away.
+        // Without this, the pool is only trimmed on the next MLX allocation,
+        // which leaves RAM elevated until the next dictation session.
+        Memory.clearCache()
+        Logger.shared.info("MLXLMInferenceProvider: Model evicted and GPU buffer cache cleared.")
     }
 
     /// `true` when a model container is currently held in Unified Memory.
@@ -133,7 +140,7 @@ public actor LocalLLMEngine: PostProcessingEngine {
     // MARK: - Init
 
     public init(
-        modelId: String = "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        modelId: String = "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
         provider: LocalLLMInferenceProvider? = nil
     ) {
         self.modelId = modelId

@@ -16,8 +16,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
-        // Local clone used to avoid GitHub auth issues in Xcode's SPM resolver
-        .package(path: "../mlx-swift-lm"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "2.30.6"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

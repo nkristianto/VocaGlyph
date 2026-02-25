@@ -28,6 +28,11 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
 
     var postProcessingEngine: (any PostProcessingEngine)?
 
+    // MARK: - Memory Pressure
+
+    /// Retained to keep the DispatchSource alive for the lifetime of AppStateManager.
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+
     // MARK: - Combine
     private var whisperCancellables: Set<AnyCancellable> = []
 
@@ -72,7 +77,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     private var _localLLMEngineModelId: String?
 
     private var localLLMEngine: LocalLLMEngine {
-        let modelId = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
+        let modelId = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
         if let existing = _localLLMEngine, _localLLMEngineModelId == modelId {
             return existing
         }
@@ -121,6 +126,33 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         // 5–30 s lag users would otherwise experience on their first dictation.
         // We never trigger a network download here — only load from disk.
         warmUpLocalLLMIfNeeded()
+
+        // Strategy 2: Respond to macOS memory pressure events so the model is
+        // automatically evicted if the system is critically low on unified memory.
+        registerMemoryPressureHandler()
+    }
+
+    /// Registers a system memory-pressure DispatchSource.
+    /// On `.warning`  — logs only (model stays loaded for faster next dictation).
+    /// On `.critical` — evicts the LLM model to reclaim unified memory immediately.
+    private func registerMemoryPressureHandler() {
+        let source = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical],
+            queue: .global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            let event = source.mask
+            if event.contains(.critical) {
+                Logger.shared.error("AppStateManager: 🔴 Critical memory pressure — evicting LLM model from unified memory.")
+                Task { await self.unloadLocalLLMEngine() }
+            } else if event.contains(.warning) {
+                Logger.shared.info("AppStateManager: 🟡 Memory pressure warning received — model kept loaded.")
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
+        Logger.shared.info("AppStateManager: Memory pressure handler registered.")
     }
 
     /// Fires a background Task to preload + Metal-warm the local LLM when:
@@ -176,7 +208,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 self.postProcessingEngine = AppleIntelligenceLegacyStub()
             }
         } else if selectedPostModel == "local-llm" {
-            let selectedLocalModel = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-7B-Instruct-4bit"
+            let selectedLocalModel = UserDefaults.standard.string(forKey: "selectedLocalLLMModel") ?? "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
             Logger.shared.info("AppStateManager: Switching post-processing engine to LocalLLMEngine (model: \(selectedLocalModel))")
             self.postProcessingEngine = localLLMEngine
             // isModelDownloaded() is actor-isolated — await it and then update the
@@ -353,7 +385,24 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Called when the user flips the "Automated Text Refinement" toggle.
+    ///
+    /// - When **disabled**: unloads the LLM from unified memory immediately.
+    /// - When **enabled**: re-activates the engine and warms up the model in
+    ///   the background if it's already on disk (no network download triggered).
+    public func onPostProcessingToggled(isEnabled: Bool) {
+        Logger.shared.info("AppStateManager: Post-processing toggled — enabled=\(isEnabled)")
+        if isEnabled {
+            switchPostProcessingEngine()
+            warmUpLocalLLMIfNeeded()
+        } else {
+            // Unload from RAM so the memory is freed immediately.
+            Task { await unloadLocalLLMEngine() }
+        }
+    }
+
     /// Deletes the downloaded model files from disk and evicts from RAM.
+
     public func deleteLocalLLMModel() async {
         do {
             try await localLLMEngine.deleteModelFromDisk()

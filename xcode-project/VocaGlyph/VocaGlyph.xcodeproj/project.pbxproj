@@ -8,9 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		5E598C5E2F4DE3E10023136C /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598C5D2F4DE3E10023136C /* WhisperKit */; };
-		5E598C642F4DE7BB0023136C /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598C632F4DE7BB0023136C /* MLXLLM */; };
-		5E598C662F4DE7BB0023136C /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598C652F4DE7BB0023136C /* MLXLMCommon */; };
 		5E598C682F4EAA000023136C /* VocaGlyphLib in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598C692F4EAA000023136C /* VocaGlyphLib */; };
+		5E598CAD2F4F47370023136C /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598CAC2F4F47370023136C /* MLXLLM */; };
+		5E598CAF2F4F47370023136C /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598CAE2F4F47370023136C /* MLXLMCommon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,9 +30,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E598CAD2F4F47370023136C /* MLXLLM in Frameworks */,
 				5E598C682F4EAA000023136C /* VocaGlyphLib in Frameworks */,
-				5E598C642F4DE7BB0023136C /* MLXLLM in Frameworks */,
-				5E598C662F4DE7BB0023136C /* MLXLMCommon in Frameworks */,
+				5E598CAF2F4F47370023136C /* MLXLMCommon in Frameworks */,
 				5E598C5E2F4DE3E10023136C /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -79,8 +79,8 @@
 			packageProductDependencies = (
 				5E598C692F4EAA000023136C /* VocaGlyphLib */,
 				5E598C5D2F4DE3E10023136C /* WhisperKit */,
-				5E598C632F4DE7BB0023136C /* MLXLLM */,
-				5E598C652F4DE7BB0023136C /* MLXLMCommon */,
+				5E598CAC2F4F47370023136C /* MLXLLM */,
+				5E598CAE2F4F47370023136C /* MLXLMCommon */,
 			);
 			productName = VocaGlyph;
 			productReference = 5E598C4D2F4DE0160023136C /* VocaGlyph.app */;
@@ -113,7 +113,7 @@
 			packageReferences = (
 				5E598C5C2F4DE3E10023136C /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				5E598C612F4DE6A60023136C /* XCLocalSwiftPackageReference "../../swift-version" */,
-				5E598C622F4DE7BB0023136C /* XCLocalSwiftPackageReference "../../mlx-swift-lm" */,
+				5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5E598C4E2F4DE0160023136C /* Products */;
@@ -399,10 +399,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../swift-version";
 		};
-		5E598C622F4DE7BB0023136C /* XCLocalSwiftPackageReference "../../mlx-swift-lm" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../mlx-swift-lm";
-		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -414,6 +410,14 @@
 				minimumVersion = 0.10.0;
 			};
 		};
+		5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.30.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -422,18 +426,20 @@
 			package = 5E598C5C2F4DE3E10023136C /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
 		};
-		5E598C632F4DE7BB0023136C /* MLXLLM */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = MLXLLM;
-		};
-		5E598C652F4DE7BB0023136C /* MLXLMCommon */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = MLXLMCommon;
-		};
 		5E598C692F4EAA000023136C /* VocaGlyphLib */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5E598C612F4DE6A60023136C /* XCLocalSwiftPackageReference "../../swift-version" */;
 			productName = VocaGlyphLib;
+		};
+		5E598CAC2F4F47370023136C /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		5E598CAE2F4F47370023136C /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

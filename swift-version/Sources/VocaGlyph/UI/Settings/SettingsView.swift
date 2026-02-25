@@ -519,7 +519,7 @@ struct PostProcessingSettingsView: View {
     @AppStorage("enablePostProcessing") private var enablePostProcessing: Bool = false
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
     @AppStorage("selectedCloudProvider") private var selectedCloudProvider: String = "gemini"
-    @AppStorage("selectedLocalLLMModel") private var selectedLocalLLMModel: String = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    @AppStorage("selectedLocalLLMModel") private var selectedLocalLLMModel: String = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
 
     @Environment(\.modelContext) private var modelContext
 
@@ -713,7 +713,13 @@ struct PostProcessingSettingsView: View {
                             .foregroundStyle(Theme.textMuted)
                     }
                     Spacer()
-                    Toggle("", isOn: $enablePostProcessing.logged(name: "Automated Text Refinement"))
+                    Toggle("", isOn: Binding(
+                        get: { enablePostProcessing },
+                        set: { newValue in
+                            enablePostProcessing = newValue
+                            stateManager.onPostProcessingToggled(isEnabled: newValue)
+                        }
+                    ))
                         .labelsHidden()
                         .toggleStyle(.switch)
                 }
@@ -1082,25 +1088,20 @@ struct PostProcessingSettingsView: View {
             }
             Spacer()
             Menu {
-                Button("Qwen 2.5 7B (4.3 GB, 16GB RAM)") {
-                    selectedLocalLLMModel = "mlx-community/Qwen2.5-7B-Instruct-4bit"
-                    stateManager.switchPostProcessingEngine()
-                }
                 Button("Qwen 2.5 1.5B (1.1 GB, 8GB RAM)") {
                     selectedLocalLLMModel = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
                     stateManager.switchPostProcessingEngine()
                 }
-                Button("Qwen 3 0.6B (0.4 GB, any Mac) — Testing") {
-                    selectedLocalLLMModel = "mlx-community/Qwen3-0.6B-4bit"
+                Button("Qwen 2.5 3B (2.0 GB, 8GB RAM)") {
+                    selectedLocalLLMModel = "mlx-community/Qwen2.5-3B-Instruct-4bit"
                     stateManager.switchPostProcessingEngine()
                 }
             } label: {
                 HStack {
                     Text({
                         switch selectedLocalLLMModel {
-                        case "mlx-community/Qwen2.5-1.5B-Instruct-4bit": return "Qwen 2.5 1.5B"
-                        case "mlx-community/Qwen3-0.6B-4bit": return "Qwen 3 0.6B (Test)"
-                        default: return "Qwen 2.5 7B"
+                        case "mlx-community/Qwen2.5-3B-Instruct-4bit": return "Qwen 2.5 3B"
+                        default: return "Qwen 2.5 1.5B"
                         }
                     }())
                         .font(.system(size: 13))
@@ -1125,12 +1126,12 @@ struct PostProcessingSettingsView: View {
         }
         .padding(16)
 
-        // RAM / disk warning (7B only)
-        if selectedLocalLLMModel == "mlx-community/Qwen2.5-7B-Instruct-4bit" {
+        // RAM / disk info
+        if selectedLocalLLMModel == "mlx-community/Qwen2.5-3B-Instruct-4bit" {
             HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text("Requires ~4.3 GB disk + 16 GB RAM. Model downloads once and is cached.")
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(Theme.accent)
+                Text("Requires ~2.0 GB disk + 8 GB RAM. Model downloads once and is cached.")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.textMuted)
                 Spacer()
@@ -1221,7 +1222,7 @@ struct PostProcessingSettingsView: View {
                     Text("Delete Model from Disk")
                         .fontWeight(.semibold)
                         .foregroundStyle(Theme.navy)
-                    Text("Removes downloaded weights (~4.3 GB) from your HuggingFace cache.")
+                    Text("Removes downloaded weights from your HuggingFace cache.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textMuted)
                 }
@@ -1237,28 +1238,6 @@ struct PostProcessingSettingsView: View {
             Divider().background(Theme.textMuted.opacity(0.1))
         }
 
-        // ── Free RAM row — only show when model is actually loaded in memory ──
-        if stateManager.localLLMIsWarmedUp {
-            Divider().background(Theme.textMuted.opacity(0.1))
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Free Model Memory")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Theme.navy)
-                    Text("Unload weights from RAM. Model stays on disk and reloads on next use.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Spacer()
-                Button("Free RAM") {
-                    Task { await stateManager.unloadLocalLLMEngine() }
-                }
-                .buttonStyle(.bordered)
-                .tint(.orange)
-            }
-            .padding(16)
-        }
     }
 
 
@@ -1828,7 +1807,11 @@ struct ModelCardView: View {
 /// as a custom floating overlay card (matching the app's delete-confirmation style).
 struct TemplateListSection: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \PostProcessingTemplate.createdAt) private var templates: [PostProcessingTemplate]
+    @Query(
+        filter: #Predicate<PostProcessingTemplate> { $0.name != "Raw — No Processing" },
+        sort: \PostProcessingTemplate.createdAt
+    ) private var templates: [PostProcessingTemplate]
+
     @AppStorage(TemplateSeederService.activeTemplateKey) private var activeTemplateIdString: String = ""
 
     /// Called when the user taps Edit on a template. Parent handles presenting the editor.
