@@ -2,38 +2,88 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-enum GlobalShortcutOption: String, CaseIterable, Identifiable {
-    case ctrlShiftC = "⌃ ⇧ C"
-    case optionSpace = "⌥ Space"
-    case cmdShiftSpace = "⌘ ⇧ Space"
-    case ctrlSpace = "⌃ Space"
-    
-    var id: String { self.rawValue }
-    
-    var keyCode: CGKeyCode {
-        switch self {
-        case .ctrlShiftC: return 8 // C
-        case .optionSpace, .cmdShiftSpace, .ctrlSpace: return 49 // Space
-        }
+// MARK: - Shortcut Storage Keys
+extension UserDefaults {
+    static let customShortcutKeyCodeKey = "customShortcutKeyCode"
+    static let customShortcutModifiersKey = "customShortcutModifiers"
+
+    /// Default shortcut: ⌃ ⇧ C  (keyCode 8, Control + Shift)
+    static let defaultShortcutKeyCode: Int = 8
+    static let defaultShortcutModifiers: UInt64 = CGEventFlags([.maskControl, .maskShift]).rawValue
+}
+
+// MARK: - Shortcut Display Helpers
+struct ShortcutDisplayHelper {
+    /// Convert a CGKeyCode + CGEventFlags into a human-readable string like "⌃ ⇧ C"
+    static func displayString(keyCode: CGKeyCode, flags: CGEventFlags) -> String {
+        var parts: [String] = []
+        if flags.contains(.maskControl)  { parts.append("⌃") }
+        if flags.contains(.maskAlternate) { parts.append("⌥") }
+        if flags.contains(.maskShift)    { parts.append("⇧") }
+        if flags.contains(.maskCommand)  { parts.append("⌘") }
+        parts.append(keyName(for: keyCode))
+        return parts.joined(separator: " ")
     }
-    
-    var flags: CGEventFlags {
-        switch self {
-        case .ctrlShiftC: return [.maskControl, .maskShift]
-        case .optionSpace: return [.maskAlternate]
-        case .cmdShiftSpace: return [.maskCommand, .maskShift]
-        case .ctrlSpace: return [.maskControl]
+
+    static func keyName(for keyCode: CGKeyCode) -> String {
+        switch keyCode {
+        case 49: return "Space"
+        case 36: return "↩"
+        case 48: return "⇥"
+        case 51: return "⌫"
+        case 53: return "Esc"
+        case 123: return "←"
+        case 124: return "→"
+        case 125: return "↓"
+        case 126: return "↑"
+        case 0:  return "A"
+        case 11: return "B"
+        case 8:  return "C"
+        case 2:  return "D"
+        case 14: return "E"
+        case 3:  return "F"
+        case 5:  return "G"
+        case 4:  return "H"
+        case 34: return "I"
+        case 38: return "J"
+        case 40: return "K"
+        case 37: return "L"
+        case 46: return "M"
+        case 45: return "N"
+        case 31: return "O"
+        case 35: return "P"
+        case 12: return "Q"
+        case 15: return "R"
+        case 1:  return "S"
+        case 17: return "T"
+        case 32: return "U"
+        case 9:  return "V"
+        case 13: return "W"
+        case 7:  return "X"
+        case 16: return "Y"
+        case 6:  return "Z"
+        case 18: return "1"
+        case 19: return "2"
+        case 20: return "3"
+        case 21: return "4"
+        case 23: return "5"
+        case 22: return "6"
+        case 26: return "7"
+        case 28: return "8"
+        case 25: return "9"
+        case 29: return "0"
+        default: return "Key\(keyCode)"
         }
     }
 }
 
-
+// MARK: - HotkeyService
 class HotkeyService {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
-    private var targetKeyCode: CGKeyCode = 8
-    private var targetFlags: CGEventFlags = [.maskControl, .maskShift]
+    private var targetKeyCode: CGKeyCode = CGKeyCode(UserDefaults.defaultShortcutKeyCode)
+    private var targetFlags: CGEventFlags = CGEventFlags(rawValue: UserDefaults.defaultShortcutModifiers)
 
     private let stateManager: AppStateManager
 
@@ -63,12 +113,16 @@ class HotkeyService {
     }
     
     private func loadShortcutFromDefaults() {
-        let presetRaw = UserDefaults.standard.string(forKey: "globalShortcutPreset") ?? GlobalShortcutOption.ctrlShiftC.rawValue
-        let preset = GlobalShortcutOption(rawValue: presetRaw) ?? .ctrlShiftC
-        
-        self.targetKeyCode = preset.keyCode
-        self.targetFlags = preset.flags
-        Logger.shared.info("Hotkey Service updated to listen for: \(presetRaw) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")
+        let keyCodeInt = UserDefaults.standard.object(forKey: UserDefaults.customShortcutKeyCodeKey) as? Int
+            ?? UserDefaults.defaultShortcutKeyCode
+        let modifiersRaw = UserDefaults.standard.object(forKey: UserDefaults.customShortcutModifiersKey) as? UInt64
+            ?? UserDefaults.defaultShortcutModifiers
+
+        self.targetKeyCode = CGKeyCode(keyCodeInt)
+        self.targetFlags = CGEventFlags(rawValue: modifiersRaw)
+
+        let display = ShortcutDisplayHelper.displayString(keyCode: targetKeyCode, flags: targetFlags)
+        Logger.shared.info("Hotkey Service updated to listen for: \(display) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")
     }
     
     func start() {
@@ -106,7 +160,7 @@ class HotkeyService {
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         
-        Logger.shared.info("Hotkey capture started for Ctrl+Shift+C")
+        Logger.shared.info("Hotkey capture started")
     }
     
     func stop() {
@@ -124,9 +178,9 @@ class HotkeyService {
         
         // Match required masks completely (for keyDown only)
         var matchesMask = true
-        if targetFlags.contains(.maskControl) { matchesMask = matchesMask && flags.contains(.maskControl) } else { matchesMask = matchesMask && !flags.contains(.maskControl) }
-        if targetFlags.contains(.maskShift) { matchesMask = matchesMask && flags.contains(.maskShift) } else { matchesMask = matchesMask && !flags.contains(.maskShift) }
-        if targetFlags.contains(.maskCommand) { matchesMask = matchesMask && flags.contains(.maskCommand) } else { matchesMask = matchesMask && !flags.contains(.maskCommand) }
+        if targetFlags.contains(.maskControl)  { matchesMask = matchesMask && flags.contains(.maskControl)  } else { matchesMask = matchesMask && !flags.contains(.maskControl) }
+        if targetFlags.contains(.maskShift)    { matchesMask = matchesMask && flags.contains(.maskShift)    } else { matchesMask = matchesMask && !flags.contains(.maskShift) }
+        if targetFlags.contains(.maskCommand)  { matchesMask = matchesMask && flags.contains(.maskCommand)  } else { matchesMask = matchesMask && !flags.contains(.maskCommand) }
         if targetFlags.contains(.maskAlternate) { matchesMask = matchesMask && flags.contains(.maskAlternate) } else { matchesMask = matchesMask && !flags.contains(.maskAlternate) }
         
         if keyCode == targetKeyCode {

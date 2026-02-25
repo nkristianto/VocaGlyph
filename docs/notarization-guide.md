@@ -89,40 +89,36 @@ xcrun notarytool log <submission-id> --keychain-profile "VocaGlyph-notary"
 > for internal testing, but signing IS required.
 
 > [!IMPORTANT]
-> Do **not** skip the `codesign` re-sign step below. When building with `xcodebuild … build`
-> (not Archive), Xcode injects a debug-only entitlement (`com.apple.security.get-task-allow`)
-> into the binary. macOS TCC sees this and silently refuses to show any permission dialogs.
-> Re-signing with `--entitlements` strips that entitlement from the final app.
+> When building with `xcodebuild … build` (not Archive), Xcode normally injects the debug-only
+> entitlement `com.apple.security.get-task-allow`. macOS TCC sees this and silently refuses to
+> show any permission dialogs. Always pass `CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO` to prevent
+> this — the build command below includes it.
 
 ### Build & sign the DMG
 
 ```bash
 # 1 — Build a Release .app from the command line
+#     CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO prevents Xcode from adding
+#     the debug-only get-task-allow entitlement to the Release build.
 cd /Users/nkristianto/Workspace/Personal/voice-to-text/xcode-project/VocaGlyph
 xcodebuild -scheme VocaGlyph -configuration Release \
   -derivedDataPath /tmp/VocaGlyph-build \
   CODE_SIGN_IDENTITY="Developer ID Application: Novian Kristianto (3C269K7QLF)" \
+  DEVELOPMENT_TEAM="3C269K7QLF" \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build
 
 # 2 — Copy the built .app out of DerivedData
+#     Always rm -rf first — cp -R will nest the app inside an existing directory
+rm -rf ~/Desktop/VocaGlyph.app
 cp -R /tmp/VocaGlyph-build/Build/Products/Release/VocaGlyph.app ~/Desktop/VocaGlyph.app
 
-# 3 — Re-sign with Developer ID + entitlements (removes get-task-allow debug entitlement)
-CERT="Developer ID Application: Novian Kristianto (3C269K7QLF)"
-ENTITLEMENTS="/Users/nkristianto/Workspace/Personal/voice-to-text/swift-version/VocaGlyph.entitlements"
-
-codesign --force --deep \
-  --sign "$CERT" \
-  --entitlements "$ENTITLEMENTS" \
-  --options runtime \
-  --timestamp \
-  ~/Desktop/VocaGlyph.app
-
-# 4 — Verify (should print "✅ Signature OK" with no com.apple.security.get-task-allow)
+# 3 — Verify: signature OK and no get-task-allow
 codesign --verify --deep --strict ~/Desktop/VocaGlyph.app && echo "✅ Signature OK"
-codesign -dv --entitlements :- ~/Desktop/VocaGlyph.app 2>&1 | grep -E "get-task-allow|audio-input|TeamIdentifier"
+codesign -d --entitlements - --xml ~/Desktop/VocaGlyph.app 2>/dev/null | plutil -p - | grep -v get-task-allow && echo "✅ No get-task-allow"
 
-# 5 — Package as DMG
+# 4 — Package as DMG
 hdiutil create -volname "VocaGlyph" -srcfolder ~/Desktop/VocaGlyph.app \
   -ov -format UDZO ~/Desktop/VocaGlyph-tester.dmg
 ```

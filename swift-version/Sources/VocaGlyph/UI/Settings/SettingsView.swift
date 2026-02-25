@@ -186,7 +186,14 @@ struct GeneralSettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
     
-    @AppStorage("globalShortcutPreset") private var globalShortcutPreset: String = GlobalShortcutOption.ctrlShiftC.rawValue
+    @AppStorage(UserDefaults.customShortcutKeyCodeKey) private var customShortcutKeyCode: Int = UserDefaults.defaultShortcutKeyCode
+    @AppStorage(UserDefaults.customShortcutModifiersKey) private var customShortcutModifiersRaw: Double = Double(UserDefaults.defaultShortcutModifiers)
+
+    private var currentShortcutDisplay: String {
+        let flags = CGEventFlags(rawValue: UInt64(customShortcutModifiersRaw))
+        return ShortcutDisplayHelper.displayString(keyCode: CGKeyCode(customShortcutKeyCode), flags: flags)
+    }
+
     @AppStorage("dictationLanguage") private var dictationLanguage: String = "Auto-Detect"
     @AppStorage("autoPunctuation") private var autoPunctuation: Bool = true
     @AppStorage("removeFillerWords") private var removeFillerWords: Bool = false
@@ -254,34 +261,24 @@ struct GeneralSettingsView: View {
                                 Text("Global Shortcut")
                                     .fontWeight(.semibold)
                                     .foregroundStyle(Theme.navy)
-                                Text("Press to start/stop dictation")
+                                Text("Click the shortcut to record a new one")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Theme.textMuted)
                             }
                             Spacer()
-                            Menu {
-                                ForEach(GlobalShortcutOption.allCases) { option in
-                                    Button(option.rawValue) {
-                                        Logger.shared.debug("Settings: Changed Global Shortcut from '\(globalShortcutPreset)' to '\(option.rawValue)'")
-                                        globalShortcutPreset = option.rawValue
-                                    }
+                            ShortcutRecorderButton(
+                                displayLabel: currentShortcutDisplay,
+                                onShortcutRecorded: { keyCode, modifiers in
+                                    Logger.shared.debug("Settings: Recorded new shortcut keyCode=\(keyCode) modifiers=\(modifiers.rawValue)")
+                                    customShortcutKeyCode = Int(keyCode)
+                                    customShortcutModifiersRaw = Double(modifiers.rawValue)
+                                },
+                                onReset: {
+                                    Logger.shared.debug("Settings: Reset shortcut to default")
+                                    customShortcutKeyCode = UserDefaults.defaultShortcutKeyCode
+                                    customShortcutModifiersRaw = Double(UserDefaults.defaultShortcutModifiers)
                                 }
-                            } label: {
-                                Text(globalShortcutPreset)
-                                    .font(.system(.body, design: .monospaced))
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(Theme.navy)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.white)
-                                    .clipShape(.rect(cornerRadius: 6))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Theme.textMuted.opacity(0.2), lineWidth: 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
+                            )
                         }
                         .padding(16)
                         
@@ -2336,5 +2333,113 @@ struct TemplateEditorCard: View {
         }
         template.updatedAt = Date()
         Logger.shared.info("TemplateEditorCard: Reset '\(template.name)' to default rules.")
+    }
+}
+
+// MARK: - Shortcut Recorder Button
+
+struct ShortcutRecorderButton: View {
+    let displayLabel: String
+    let onShortcutRecorded: (CGKeyCode, CGEventFlags) -> Void
+    let onReset: () -> Void
+
+    @State private var isRecording = false
+    @State private var localMonitor: Any?
+
+    // Keys that are valid as the primary (non-modifier) key
+    private let invalidKeyCodes: Set<CGKeyCode> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63] // modifier-only keys
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: toggleRecording) {
+                Group {
+                    if isRecording {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 7, height: 7)
+                                .opacity(isRecording ? 1 : 0)
+                            Text("Press keys…")
+                                .font(.system(.body, design: .monospaced))
+                                .fontWeight(.medium)
+                                .foregroundStyle(Color.red)
+                        }
+                    } else {
+                        Text(displayLabel)
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .foregroundStyle(Theme.navy)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isRecording ? Color.red.opacity(0.08) : Color.white)
+                .clipShape(.rect(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isRecording ? Color.red.opacity(0.4) : Theme.textMuted.opacity(0.2), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .shadow(color: .black.opacity(0.02), radius: 2, y: 1)
+            .animation(.easeInOut(duration: 0.15), value: isRecording)
+
+            // Reset button
+            Button(action: {
+                stopRecording()
+                onReset()
+            }) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .buttonStyle(.plain)
+            .help("Reset to default (⌃ ⇧ C)")
+        }
+        .onDisappear { stopRecording() }
+    }
+
+    private func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+
+    private func startRecording() {
+        isRecording = true
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [self] event in
+            // Escape cancels without saving
+            if event.keyCode == 53 {
+                stopRecording()
+                return nil
+            }
+
+            let keyCode = CGKeyCode(event.keyCode)
+            // Ignore lone modifier-key presses
+            if invalidKeyCodes.contains(keyCode) { return nil }
+
+            var flags = CGEventFlags()
+            if event.modifierFlags.contains(.control)  { flags.insert(.maskControl) }
+            if event.modifierFlags.contains(.option)   { flags.insert(.maskAlternate) }
+            if event.modifierFlags.contains(.shift)    { flags.insert(.maskShift) }
+            if event.modifierFlags.contains(.command)  { flags.insert(.maskCommand) }
+
+            // Require at least one modifier to avoid intercepting normal typing
+            guard !flags.isEmpty else { return event }
+
+            stopRecording()
+            onShortcutRecorded(keyCode, flags)
+            return nil // consume
+        }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMonitor = nil
+        }
     }
 }
