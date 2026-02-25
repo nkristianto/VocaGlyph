@@ -28,6 +28,7 @@ enum SettingsTab: Hashable {
 struct SettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
+    var microphoneService: MicrophoneService
     @State private var settingsViewModel = SettingsViewModel()
     
     @State private var selectedTab: SettingsTab? = .general
@@ -50,7 +51,7 @@ struct SettingsView: View {
                 case .history:
                     HistorySettingsView()
                 case .general:
-                    GeneralSettingsView(whisper: whisper, stateManager: stateManager)
+                    GeneralSettingsView(whisper: whisper, stateManager: stateManager, microphoneService: microphoneService)
                 case .model:
                     ModelSettingsView(whisper: whisper, stateManager: stateManager)
                 case .postProcessing:
@@ -185,7 +186,8 @@ struct SidebarItemView: View {
 struct GeneralSettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
-    
+    @Bindable var microphoneService: MicrophoneService
+
     @AppStorage(UserDefaults.customShortcutKeyCodeKey) private var customShortcutKeyCode: Int = UserDefaults.defaultShortcutKeyCode
     @AppStorage(UserDefaults.customShortcutModifiersKey) private var customShortcutModifiersRaw: Double = Double(UserDefaults.defaultShortcutModifiers)
 
@@ -345,6 +347,54 @@ struct GeneralSettingsView: View {
                             }
                             .buttonStyle(.plain) // Use plain button style to draw the custom label properly
                             .frame(width: 140)
+                        }
+                        .padding(16)
+                        
+                        Divider().background(Theme.textMuted.opacity(0.1))
+                        
+                        // Microphone Selection
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Microphone")
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(Theme.navy)
+                                Text("Input device used for voice recording")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textMuted)
+                            }
+                            Spacer()
+                            Menu {
+                                ForEach(microphoneService.availableInputs) { device in
+                                    Button(device.name) {
+                                        Logger.shared.debug("Settings: Changed Microphone to '\(device.name)'")
+                                        microphoneService.select(device)
+                                    }
+                                    if device == .systemDefault && microphoneService.availableInputs.count > 1 {
+                                        Divider()
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(microphoneService.selectedDevice.name)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.navy)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Theme.background)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 160)
                         }
                         .padding(16)
                         
@@ -517,6 +567,12 @@ struct PostProcessingSettingsView: View {
     @AppStorage("selectedTaskModel") private var selectedTaskModel: String = "apple-native"
     @AppStorage("selectedCloudProvider") private var selectedCloudProvider: String = "gemini"
     @AppStorage("selectedLocalLLMModel") private var selectedLocalLLMModel: String = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
+
+    // MARK: - LLM Inference Parameters
+    @AppStorage(LLMInferenceConfiguration.temperatureKey) private var llmTemperature: Double = 0.0
+    @AppStorage(LLMInferenceConfiguration.topPKey) private var llmTopP: Double = 1.0
+    @AppStorage(LLMInferenceConfiguration.repetitionPenaltyKey) private var llmRepetitionPenalty: Double = 1.0
+    @State private var llmParamsExpanded: Bool = false
 
     @Environment(\.modelContext) private var modelContext
 
@@ -1235,11 +1291,148 @@ struct PostProcessingSettingsView: View {
             Divider().background(Theme.textMuted.opacity(0.1))
         }
 
+        // ── AI Quality Parameters ─────────────────────────────────────────
+        Divider().background(Theme.textMuted.opacity(0.1))
+        llmParametersSection
+
     }
 
+    // MARK: - LLM Parameters Section
 
+    @ViewBuilder
+    private var llmParametersSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Disclosure toggle row
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    llmParamsExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.textMuted)
+                    Text("Advanced Settings")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.navy)
+                    Spacer()
+                    Image(systemName: llmParamsExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                .padding(16)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
-    // MARK: - Template Section
+            if llmParamsExpanded {
+                Divider().background(Theme.textMuted.opacity(0.1))
+
+                VStack(alignment: .leading, spacing: 12) {
+                    // Reset button row
+                    HStack {
+                        Text("Fine-tune how the model generates its output")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textMuted)
+                        Spacer()
+                        Button("Reset") {
+                            llmTemperature = 0.0
+                            llmTopP = 1.0
+                            llmRepetitionPenalty = 1.0
+                            Logger.shared.info("Settings: LLM parameters reset to defaults")
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.background)
+                        .clipShape(.rect(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
+                    }
+
+                    // Temperature Slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Temperature")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.navy)
+                            Spacer()
+                            Text(String(format: "%.2f", llmTemperature))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                        Slider(value: $llmTemperature, in: 0.0...1.0, step: 0.05)
+                            .tint(Theme.accent)
+                        HStack(spacing: 4) {
+                            Image(systemName: "thermometer.low")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textMuted)
+                            Text("Controls randomness. Lower = more precise, stays faithful to your words. Higher = more creative, may paraphrase.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+
+                    Divider().background(Theme.textMuted.opacity(0.08))
+
+                    // Top-P / Focus Slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Focus (Top-P)")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.navy)
+                            Spacer()
+                            Text(String(format: "%.2f", llmTopP))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                        Slider(value: $llmTopP, in: 0.5...1.0, step: 0.05)
+                            .tint(Theme.accent)
+                        HStack(spacing: 4) {
+                            Image(systemName: "scope")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textMuted)
+                            Text("Nucleus sampling. Filters out low-probability word choices. Lower = more focused, higher = more flexible.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+
+                    Divider().background(Theme.textMuted.opacity(0.08))
+
+                    // Repetition Penalty Slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Repetition Penalty")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.navy)
+                            Spacer()
+                            Text(String(format: "%.2f", llmRepetitionPenalty))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(Theme.accent)
+                                .frame(width: 36, alignment: .trailing)
+                        }
+                        Slider(value: $llmRepetitionPenalty, in: 1.0...1.3, step: 0.05)
+                            .tint(Theme.accent)
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.textMuted)
+                            Text("Penalises repeated words to avoid loops. 1.0 = off. Values above 1.1 may slightly affect quality.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                    }
+                }
+                .padding(16)
+                .transition(.opacity)
+            }
+        }
+    }
+
 
     @ViewBuilder
     private var templateSection: some View {
@@ -2174,8 +2367,9 @@ struct TemplateEditorCard: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.navy)
                         .frame(minHeight: 80, maxHeight: 120)
+                        .scrollContentBackground(.hidden)
                         .padding(8)
-                        .background(Color(hex: "#F9F8F6"))
+                        .background(Color.white)
                         .cornerRadius(8)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.textMuted.opacity(0.2), lineWidth: 1))
 

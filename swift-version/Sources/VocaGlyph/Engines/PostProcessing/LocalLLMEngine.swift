@@ -27,7 +27,7 @@ private let vocaGlyphHubApi: HubApi = HubApi(downloadBase: vocaGlyphCacheDir())
 /// Protocol abstracting the MLX inference layer. Concrete type is `MLXLMInferenceProvider`.
 /// Test code injects `MockLocalLLMInferenceProvider` to avoid real model loading.
 public protocol LocalLLMInferenceProvider: Sendable {
-    func generate(prompt: String, modelId: String) async throws -> String
+    func generate(prompt: String, modelId: String, configuration: LLMInferenceConfiguration) async throws -> String
     func loadContainer(modelId: String, progressHandler: @Sendable @escaping (Double) -> Void) async throws -> Void
 }
 
@@ -53,16 +53,16 @@ public final class MLXLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
         self.cachedModelId = modelId
     }
 
-    public func generate(prompt: String, modelId: String) async throws -> String {
+    public func generate(prompt: String, modelId: String, configuration: LLMInferenceConfiguration) async throws -> String {
         // Use cached container if available for the same model, otherwise load fresh
         let container: ModelContainer
         if let cached = cachedContainer, cachedModelId == modelId {
             container = cached
         } else {
-            let configuration = ModelConfiguration(id: modelId)
+            let modelConfiguration = ModelConfiguration(id: modelId)
             let loaded = try await LLMModelFactory.shared.loadContainer(
                 hub: vocaGlyphHubApi,
-                configuration: configuration
+                configuration: modelConfiguration
             ) { progress in
                 Logger.shared.info("LocalLLMEngine: Auto-loading model \(Int(progress.fractionCompleted * 100))%")
             }
@@ -70,7 +70,12 @@ public final class MLXLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
             self.cachedModelId = modelId
             container = loaded
         }
-        let parameters = GenerateParameters(temperature: 0.0)
+        let parameters = GenerateParameters(
+            temperature: configuration.temperature,
+            topP: configuration.topP,
+            repetitionPenalty: configuration.repetitionPenalty,
+            repetitionContextSize: configuration.repetitionContextSize
+        )
         let userInput = UserInput(prompt: prompt)
         let input = try await container.prepare(input: userInput)
         let stream = try await container.generate(input: input, parameters: parameters)
@@ -221,12 +226,15 @@ public actor LocalLLMEngine: PostProcessingEngine {
     // MARK: - PostProcessingEngine Conformance
 
     public func refine(text: String, prompt: String) async throws -> String {
+        // Read user-configured parameters from UserDefaults at inference time.
+        let inferenceConfig = LLMInferenceConfiguration.fromUserDefaults()
         PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] model=\(modelId) input=\(text.count) chars")
         PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] Prompt: '\(prompt)'")
         PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] Input text: '\(text)'")
+        PostProcessingLogger.shared.info("LocalLLMEngine: [PARAMS] temperature=\(inferenceConfig.temperature) topP=\(inferenceConfig.topP) repetitionPenalty=\(inferenceConfig.repetitionPenalty.map { String($0) } ?? "nil")")
         let fullPrompt = buildPrompt(system: prompt, userText: text)
         do {
-            let rawOutput = try await provider.generate(prompt: fullPrompt, modelId: modelId)
+            let rawOutput = try await provider.generate(prompt: fullPrompt, modelId: modelId, configuration: inferenceConfig)
             PostProcessingLogger.shared.info("LocalLLMEngine: [RESPONSE] Raw model output (\(rawOutput.count) chars): '\(rawOutput)'")
             // Qwen3 and other "thinking" models emit <think>…</think> before the answer.
             // Strip it so only the actual refined text is returned.
@@ -253,7 +261,7 @@ public actor LocalLLMEngine: PostProcessingEngine {
     /// first real user session has no compilation delay (typically saves 1–3 seconds).
     private func warmUpInference() async {
         let warmUpPrompt = buildPrompt(system: "You are a helpful assistant.", userText: "Hi")
-        _ = try? await provider.generate(prompt: warmUpPrompt, modelId: modelId)
+        _ = try? await provider.generate(prompt: warmUpPrompt, modelId: modelId, configuration: .default)
         Logger.shared.info("LocalLLMEngine: Metal shader warm-up inference complete.")
     }
 

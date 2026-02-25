@@ -12,6 +12,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
     var output: OutputService!
+
+    /// Manages microphone enumeration and selection.
+    @MainActor let microphoneService = MicrophoneService()
+
+    // NSMenuItem used as the container for the dynamic microphone sub-menu.
+    private var microphoneMenuItem: NSMenuItem!
     
     public override init() {
         super.init()
@@ -121,6 +127,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         stateManager.delegate = self
         audioRecorder = AudioRecorderService()
         audioRecorder.configChangeDelegate = self
+        audioRecorder.microphoneService = microphoneService
         whisper = WhisperService()
         whisper.delegate = self
         stateManager.sharedWhisper = whisper // Let AppStateManager reuse this single instance
@@ -132,7 +139,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Setup Settings Window
         var anySettingsView: AnyView
-        let settingsView = SettingsView(whisper: whisper, stateManager: stateManager)
+        let settingsView = SettingsView(whisper: whisper, stateManager: stateManager, microphoneService: microphoneService)
         if let container = sharedModelContainer {
             anySettingsView = AnyView(settingsView.modelContainer(container))
         } else {
@@ -179,16 +186,25 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         let menu = NSMenu()
+        menu.delegate = self
+
         let settingsMenuItem = NSMenuItem(title: "Settings...", action: #selector(toggleSettingsWindow(_:)), keyEquivalent: ",")
         settingsMenuItem.target = self
         menu.addItem(settingsMenuItem)
-        
+
+        // ── Microphone submenu ────────────────────────────────────────
+        microphoneMenuItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        microphoneMenuItem.submenu = NSMenu(title: "Microphone")
+        menu.addItem(microphoneMenuItem)
+        // Populate once so the submenu isn't blank before first open.
+        rebuildMicrophoneSubmenu()
+
         menu.addItem(NSMenuItem.separator())
-        
+
         let quitMenuItem = NSMenuItem(title: "Quit VocaGlyph", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitMenuItem.target = NSApp
         menu.addItem(quitMenuItem)
-        
+
         statusItem.menu = menu
     }
     
@@ -213,7 +229,62 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
+
+    // MARK: - Microphone Submenu
+
+    /// Rebuilds the Microphone submenu with the current device list.
+    /// Called once at setup and again from `menuWillOpen(_:)` so the
+    /// list reflects any devices plugged in since the last open.
+    @MainActor
+    func rebuildMicrophoneSubmenu() {
+        guard let submenu = microphoneMenuItem.submenu else { return }
+        submenu.removeAllItems()
+
+        let currentUID = microphoneService.selectedUID ?? ""
+
+        for device in microphoneService.availableInputs {
+            let isSeparatorMarker = (device == .systemDefault && microphoneService.availableInputs.count > 1)
+
+            // Insert a visual separator between real devices and "System Default"
+            if isSeparatorMarker && device == microphoneService.availableInputs.last {
+                submenu.addItem(NSMenuItem.separator())
+            }
+
+            let item = NSMenuItem(
+                title: device.name,
+                action: #selector(selectMicrophone(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = device
+            item.state = (device.uid == currentUID) ? .on : .off
+            submenu.addItem(item)
+
+            if device == .systemDefault && microphoneService.availableInputs.count > 1 {
+                submenu.addItem(NSMenuItem.separator())
+            }
+        }
+    }
+
+    @MainActor @objc private func selectMicrophone(_ sender: NSMenuItem) {
+        guard let device = sender.representedObject as? MicrophoneDevice else { return }
+        microphoneService.select(device)
+        rebuildMicrophoneSubmenu()
+    }
 }
+
+// MARK: - NSMenuDelegate
+extension AppDelegate: NSMenuDelegate {
+    public func menuWillOpen(_ menu: NSMenu) {
+        // Refresh device list and rebuild the submenu each time the status-bar
+        // menu is about to open, so newly connected devices are visible immediately.
+        guard let subMenu = microphoneMenuItem?.submenu, menu === statusItem.menu else { return }
+        microphoneService.refreshDevices()
+        rebuildMicrophoneSubmenu()
+        _ = subMenu // suppress unused warning
+    }
+}
+
 
 // MARK: - NSWindowDelegate
 extension AppDelegate: NSWindowDelegate {

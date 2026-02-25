@@ -9,11 +9,13 @@ final class MockLocalLLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
     var shouldThrowError: Bool = false
     var thrownError: Error = LocalLLMEngineError.inferenceFailed("bad")
     var capturedPrompt: String?
+    var capturedConfiguration: LLMInferenceConfiguration?
     var callCount: Int = 0
 
-    func generate(prompt: String, modelId: String) async throws -> String {
+    func generate(prompt: String, modelId: String, configuration: LLMInferenceConfiguration) async throws -> String {
         callCount += 1
         capturedPrompt = prompt
+        capturedConfiguration = configuration
         if shouldThrowError {
             throw thrownError
         }
@@ -133,5 +135,55 @@ final class LocalLLMEngineTests: XCTestCase {
         XCTAssertEqual(LocalLLMEngineError.inferenceFailed("x"), LocalLLMEngineError.inferenceFailed("x"))
         XCTAssertEqual(LocalLLMEngineError.insufficientMemory, LocalLLMEngineError.insufficientMemory)
         XCTAssertNotEqual(LocalLLMEngineError.insufficientMemory, LocalLLMEngineError.inferenceFailed(""))
+    }
+
+    // MARK: - AC-7.5: LLMInferenceConfiguration is forwarded to provider
+
+    func testRefineForwardsCustomConfigurationToProvider() async throws {
+        // Arrange
+        let mock = MockLocalLLMInferenceProvider()
+        mock.returnedText = "result"
+        let engine = LocalLLMEngine(provider: mock)
+
+        // Set custom values in UserDefaults
+        UserDefaults.standard.set(0.5, forKey: LLMInferenceConfiguration.temperatureKey)
+        UserDefaults.standard.set(0.8, forKey: LLMInferenceConfiguration.topPKey)
+        UserDefaults.standard.set(1.15, forKey: LLMInferenceConfiguration.repetitionPenaltyKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: LLMInferenceConfiguration.temperatureKey)
+            UserDefaults.standard.removeObject(forKey: LLMInferenceConfiguration.topPKey)
+            UserDefaults.standard.removeObject(forKey: LLMInferenceConfiguration.repetitionPenaltyKey)
+        }
+
+        // Act
+        _ = try await engine.refine(text: "hello", prompt: "fix")
+
+        // Assert — provider received correct configuration values
+        let config = try XCTUnwrap(mock.capturedConfiguration)
+        XCTAssertEqual(config.temperature, 0.5, accuracy: 0.001)
+        XCTAssertEqual(config.topP, 0.8, accuracy: 0.001)
+        XCTAssertEqual(config.repetitionPenalty ?? 0, 1.15, accuracy: 0.001)
+    }
+
+    func testRefineUsesDefaultConfigurationWhenUserDefaultsAbsent() async throws {
+        // Arrange — ensure keys are absent (using literal keys to avoid scope issues)
+        UserDefaults.standard.removeObject(forKey: "llmTemperature")
+        UserDefaults.standard.removeObject(forKey: "llmTopP")
+        UserDefaults.standard.removeObject(forKey: "llmRepetitionPenalty")
+
+        let mock = MockLocalLLMInferenceProvider()
+        mock.returnedText = "result"
+        let engine = LocalLLMEngine(provider: mock)
+
+        // Act
+        _ = try await engine.refine(text: "hello", prompt: "fix")
+
+        // Assert — falls back to .default preset values (temperature=0.2, topP=0.9)
+        guard let config = mock.capturedConfiguration else {
+            XCTFail("Expected capturedConfiguration to be set")
+            return
+        }
+        XCTAssertEqual(config.temperature, 0.2, accuracy: 0.001, "Should use default temperature of 0.2")
+        XCTAssertEqual(config.topP, 0.9, accuracy: 0.001, "Should use default topP of 0.9")
     }
 }

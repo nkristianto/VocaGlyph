@@ -27,6 +27,11 @@ class AudioRecorderService {
     /// is granted or the Settings window triggers an audio graph reconfiguration).
     weak var configChangeDelegate: AudioRecorderConfigChangeDelegate?
 
+    /// Weak reference to the microphone selection service. When set, the service's
+    /// currently selected device is applied as the system default input just before
+    /// the AVAudioEngine starts. `weak` prevents a retain cycle with AppDelegate.
+    weak var microphoneService: MicrophoneService?
+
     init() {
         requestPermissions()
         // Watch for AVAudioEngine I/O reconfigurations (device changes, window focus
@@ -71,6 +76,11 @@ class AudioRecorderService {
     // Throws if the audio engine cannot be started so that callers can
     // immediately reset state rather than silently hanging.
     func startRecording() throws {
+        // 0. Apply the user's microphone preference as the system default input.
+        //    AVAudioEngine.inputNode always follows the system default on macOS, so
+        //    we set it here (on the audio queue) before the engine graph is rebuilt.
+        microphoneService?.applySelectionToSystem()
+
         // 1. Reset accumulated data
         bufferLock.lock()
         recordedData.removeAll()
