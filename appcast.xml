@@ -1,11 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0"
-     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
-     xmlns:dc="http://purl.org/dc/elements/1.1/">
-  <channel>
-    <title>VocaGlyph</title>
-    <link>https://github.com/nkristianto/VocaGlyph</link>
-    <description>VocaGlyph release updates</description>
-    <language>en</language>
-  </channel>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0">
+    <channel>
+        <title>VocaGlyph</title>
+        <link>https://github.com/nkristianto/VocaGlyph</link>
+        <description>VocaGlyph release updates</description>
+        <language>en</language>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Thu, 26 Feb 2026 13:49:07 +0700</pubDate>
+            <sparkle:version>83</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.1.0/VocaGlyph-0.1.0.dmg" length="18353980" type="application/octet-stream" sparkle:edSignature="GKOGSSJoOkai3x4bWaapNL7telzx4xhHW8ON+l7lrINzVMz5kqrg+tHRVcZiUiD+a41YHFdpxOtqrXHk0A8iBQ=="/>
+        </item>
+    </channel>
 </rss>
