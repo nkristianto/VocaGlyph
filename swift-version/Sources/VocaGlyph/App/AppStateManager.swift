@@ -320,17 +320,27 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 return
             }
 
+
+            // ── Stage 1.7: Word Replacement ───────────────────────────────────────
+            // Applies user-defined exact word/phrase substitutions before AI post-
+            // processing. Runs even when post-processing is disabled (AC #8).
+            let enabledReplacements = fetchEnabledWordReplacements()
+            var finalText = WordReplacementApplicator.apply(
+                to: trimmedText,
+                replacements: enabledReplacements
+            )
+            Logger.shared.info("AppStateManager: [WordReplacement] Applied \(enabledReplacements.count) pair(s). Result: '\(finalText)'")
+
             // ── Stage 2: Post-Processing (30s timeout) ────────────────────────────
-            var finalText = text
             if shouldPostProcess,
                let postProcessor = self.postProcessingEngine,
                self.localLLMIsWarmedUp,   // AC #2: skip silently if LLM still warming up
-               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+               !finalText.isEmpty {
                 Logger.shared.info("AppStateManager: [PostProcessing] Starting — template: '\(templateName)'")
                 Logger.shared.debug("AppStateManager: [PostProcessing] Full prompt: '\(postProcessPrompt)'")
                 do {
                     let refined = try await withThrowingTaskGroup(of: String.self) { group in
-                        group.addTask { try await postProcessor.refine(text: text, prompt: postProcessPrompt) }
+                        group.addTask { try await postProcessor.refine(text: finalText, prompt: postProcessPrompt) }
                         group.addTask {
                             try await Task.sleep(nanoseconds: 30_000_000_000)
                             throw NSError(domain: "TimeoutError", code: 408,
@@ -494,6 +504,20 @@ extension AppStateManager {
         let prompt = TemplatePromptRenderer.render(template: template)
         Logger.shared.info("AppStateManager: Rendered template '\(template.name)' (\(prompt.count) chars)")
         return (prompt, template.name)
+    }
+
+    /// Fetches all enabled `WordReplacement` pairs from SwiftData.
+    ///
+    /// Returns an empty array when no `modelContext` is available or when no
+    /// enabled pairs exist.  Called at the start of Stage 1.7 in `processAudio()`.
+    func fetchEnabledWordReplacements() -> [(word: String, replacement: String)] {
+        guard let context = modelContext else { return [] }
+        let descriptor = FetchDescriptor<WordReplacement>(
+            predicate: #Predicate { $0.isEnabled == true },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        let items = (try? context.fetch(descriptor)) ?? []
+        return items.map { (word: $0.word, replacement: $0.replacement) }
     }
 }
 

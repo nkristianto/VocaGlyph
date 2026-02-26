@@ -88,6 +88,13 @@ public final class MLXLMInferenceProvider: LocalLLMInferenceProvider, @unchecked
                 break
             }
         }
+        // Flush MLX's Metal buffer pool immediately after each inference run.
+        // Without this, the pool accumulates across sessions and is only lazily
+        // reclaimed on the next MLX allocation — potentially 2–4× the model
+        // baseline after many transcriptions. clearCache() returns those pages
+        // to the OS right away at the cost of ~10–50ms per session.
+        Memory.clearCache()
+        Logger.shared.info("MLXLMInferenceProvider: Post-inference GPU buffer cache cleared.")
         return output
     }
 

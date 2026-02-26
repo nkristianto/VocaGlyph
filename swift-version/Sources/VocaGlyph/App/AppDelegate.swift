@@ -43,6 +43,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             TranscriptionItem.self,
             PostProcessingTemplate.self,
             TemplateRule.self,
+            WordReplacement.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

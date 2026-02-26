@@ -30,6 +30,7 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 32) {
                     InputConfigurationSection(microphoneService: microphoneService)
                     SystemIntegrationSection()
+                    WordReplacementSection()
                     DeveloperOptionsSection()
                 }
                 .padding(40)
