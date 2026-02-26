@@ -11,6 +11,8 @@ struct ModelCardView: View {
     let isActive: Bool
     let isLoading: Bool
     let downloadProgress: Float?
+    /// Optional speed/recommendation badge text shown below the title row (e.g. "⚡ ~2× faster · English-optimised").
+    var recommendationBadge: String? = nil
     let onSelect: () -> Void
     let onUse: () -> Void
     let onDownload: () -> Void
@@ -25,6 +27,9 @@ struct ModelCardView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 headerRow
+                if let badge = recommendationBadge {
+                    speedBadgeView(badge)
+                }
                 Text(description)
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textMuted)
@@ -77,6 +82,17 @@ struct ModelCardView: View {
             .background(bg)
             .foregroundStyle(fg)
             .clipShape(.rect(cornerRadius: 4))
+    }
+
+    @ViewBuilder
+    private func speedBadgeView(_ label: String) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Theme.accent.opacity(0.1))
+            .clipShape(.rect(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.accent.opacity(0.25), lineWidth: 1))
     }
 
     @ViewBuilder

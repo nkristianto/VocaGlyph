@@ -45,30 +45,26 @@ struct ModelSettingsView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             appleNativeCard
-                            whisperCard(id: "tiny", title: "Tiny",
-                                        description: "Fastest inference for Whisper. Suitable for quick commands, basic punctuation, and short sentences.",
-                                        size: "75 MB")
-                            whisperCard(id: "base.en", title: "Base (English Only)",
-                                        description: "Optimized for English. Slightly better accuracy and speed than standard Base.",
-                                        size: "140 MB")
                             whisperCard(id: "small", title: "Small (Multilingual)",
                                         description: "Higher accuracy with acceptable speeds on modern Mac hardware.",
                                         size: "240 MB")
-                            whisperCard(id: "distil-whisper_distil-large-v3", title: "Distil Large v3",
-                                        description: "Distil-Whisper English-optimised model. Fast inference at ~60% of large-v3 size. English only — use multilingual models below for Indonesian.",
-                                        size: "1.5 GB")
-                            whisperCard(id: "medium", title: "Medium (Multilingual)",
-                                        description: "99-language multilingual model. Good Indonesian accuracy (~14% WER). Best balance of speed and quality for non-English dictation on 8 GB Macs.",
-                                        size: "1.5 GB")
                             whisperCard(id: "large-v3-v20240930_626MB", title: "Large v3 Quantized (Multilingual) ⭐",
                                         description: "Best under-1GB multilingual model. Near large-v3 accuracy at only ~626 MB. Great for Indonesian on any Apple Silicon Mac.",
                                         size: "626 MB")
-                            whisperCard(id: "large-v3", title: "Large v3 (Multilingual) ⭐",
-                                        description: "Best overall multilingual accuracy. Top Indonesian performance (~7% WER). Requires 16 GB RAM and Apple Silicon.",
-                                        size: "3 GB")
+                            whisperCard(id: "medium", title: "Medium (Multilingual)",
+                                        description: "99-language multilingual model. Good Indonesian accuracy (~14% WER). Best balance of speed and quality for non-English dictation on 8 GB Macs.",
+                                        size: "1.5 GB")
                             whisperCard(id: "large-v3_turbo", title: "Large v3 Turbo (Multilingual) ⭐",
                                         description: "Speed-optimised large-v3 variant. Near-identical accuracy at 2× faster inference. Best choice for Indonesian on 16 GB Macs.",
                                         size: "1.5 GB")
+                            whisperCard(id: "distil-whisper_distil-large-v3",
+                                        title: "Distil Large v3",
+                                        description: "Distil-Whisper English-optimised model. Fast inference at ~60% of large-v3 size. English only — use multilingual models above for Indonesian.",
+                                        size: "1.5 GB",
+                                        recommendationBadge: "⚡ ~2× faster · English-optimised")
+                            whisperCard(id: "large-v3", title: "Large v3 (Multilingual) ⭐",
+                                        description: "Best overall multilingual accuracy. Top Indonesian performance (~7% WER). Requires 16 GB RAM and Apple Silicon.",
+                                        size: "3 GB")
                         }
                         .padding(.trailing, 8)
                         .onAppear { focusedModel = selectedModel }
@@ -142,7 +138,13 @@ struct ModelSettingsView: View {
     }
 
     @ViewBuilder
-    private func whisperCard(id: String, title: String, description: String, size: String) -> some View {
+    private func whisperCard(
+        id: String,
+        title: String,
+        description: String,
+        size: String,
+        recommendationBadge: String? = nil
+    ) -> some View {
         ModelCardView(
             title: title,
             description: description,
@@ -152,6 +154,7 @@ struct ModelSettingsView: View {
             isActive: selectedModel == id && whisper.activeModel == id,
             isLoading: whisper.loadingModel == id,
             downloadProgress: whisper.downloadProgresses[id],
+            recommendationBadge: recommendationBadge,
             onSelect: { focusedModel = id },
             onUse: {
                 selectedModel = id
