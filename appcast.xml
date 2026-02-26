@@ -6,12 +6,23 @@
         <description>VocaGlyph release updates</description>
         <language>en</language>
         <item>
+            <title>0.1.1</title>
+            <pubDate>Thu, 26 Feb 2026 14:06:01 +0700</pubDate>
+            <sparkle:version>85</sparkle:version>
+            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.1.1/VocaGlyph-0.1.1.dmg" length="18354407" type="application/octet-stream" sparkle:edSignature="a5oO2/s5QkosnNbMlaZNvTzrC7DVcyi9f4WQhWO32ydBvQKhNwg82ZKORUeC9FAi3Fgs1txBHugo5LJze7ucBA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.1.1/VocaGlyph85-83.delta" sparkle:deltaFrom="83" length="661502" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977840" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="RuvnS0FyJmaNrttpcOw48jonDOTvhSLtUOl0Na/ZPtI/tv+CV3OkqV2MpeerW0OkRXG7rf2Hcp7361EFRaikBw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>0.1.0</title>
             <pubDate>Thu, 26 Feb 2026 13:49:07 +0700</pubDate>
             <sparkle:version>83</sparkle:version>
             <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.1.0/VocaGlyph-0.1.0.dmg" length="18353980" type="application/octet-stream" sparkle:edSignature="GKOGSSJoOkai3x4bWaapNL7telzx4xhHW8ON+l7lrINzVMz5kqrg+tHRVcZiUiD+a41YHFdpxOtqrXHk0A8iBQ=="/>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.1.1/VocaGlyph-0.1.0.dmg" length="18353980" type="application/octet-stream" sparkle:edSignature="GKOGSSJoOkai3x4bWaapNL7telzx4xhHW8ON+l7lrINzVMz5kqrg+tHRVcZiUiD+a41YHFdpxOtqrXHk0A8iBQ=="/>
         </item>
     </channel>
 </rss>
