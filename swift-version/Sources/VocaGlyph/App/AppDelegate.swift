@@ -544,10 +544,14 @@ extension AppDelegate: WhisperServiceDelegate {
 // MARK: - SPUUpdaterDelegate (Sparkle)
 extension AppDelegate: SPUUpdaterDelegate {
     /// Called by Sparkle before presenting an update to the user.
-    /// Return false to make a specific release non-skippable.
-    /// In practice, the appcast's `minimumAutoupdateVersion` key handles
-    /// mandatory enforcement — returning true here is the standard path.
     public func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         return false // Install immediately; do not delay relaunch
+    }
+
+    /// Called by Sparkle right before it terminates the app to install the update.
+    /// Close all windows so the process exits cleanly — an open Settings or onboarding
+    /// window can prevent the app from fully terminating, which blocks the installer.
+    public func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        NSApp.windows.forEach { $0.close() }
     }
 }
