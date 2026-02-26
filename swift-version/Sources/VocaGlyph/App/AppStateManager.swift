@@ -144,8 +144,16 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             let event = source.mask
             if event.contains(.critical) {
-                Logger.shared.error("AppStateManager: 🔴 Critical memory pressure — evicting LLM model from unified memory.")
-                Task { await self.unloadLocalLLMEngine() }
+                Task {
+                    let isLoaded = await self._localLLMEngine?.isModelLoaded() ?? false
+                    if isLoaded {
+                        Logger.shared.error("AppStateManager: 🔴 Critical memory pressure — evicting LLM model from unified memory.")
+                    } else {
+                        Logger.shared.info("AppStateManager: 🔴 Critical memory pressure received — LLM not loaded, nothing to evict.")
+                    }
+                    await self.unloadLocalLLMEngine()
+                }
+
             } else if event.contains(.warning) {
                 Logger.shared.info("AppStateManager: 🟡 Memory pressure warning received — model kept loaded.")
             }
@@ -186,6 +194,13 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     }
     
     public func switchPostProcessingEngine() {
+        let postProcessingEnabled = UserDefaults.standard.bool(forKey: "enablePostProcessing")
+        guard postProcessingEnabled else {
+            Logger.shared.info("AppStateManager: Post-processing is disabled — skipping engine allocation.")
+            self.postProcessingEngine = nil
+            return
+        }
+
         let selectedPostModel = UserDefaults.standard.string(forKey: "selectedTaskModel") ?? "apple-native"
         Logger.shared.info("AppStateManager: Switching post-processing engine to: \(selectedPostModel)")
         
@@ -353,7 +368,13 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     /// Called from `SettingsView` when the user presses "Free Model Memory".
     /// Never call `localLLMEngine.unloadModel()` directly from UI — always go through the Orchestrator.
     public func unloadLocalLLMEngine() async {
-        await localLLMEngine.unloadModel()
+        // Guard: if the engine was never instantiated, there is nothing to unload.
+        // Avoids force-creating a LocalLLMEngine just to call unloadModel() on a cold instance.
+        guard let engine = _localLLMEngine else {
+            Logger.shared.info("AppStateManager: unloadLocalLLMEngine — engine not instantiated, skipping.")
+            return
+        }
+        await engine.unloadModel()
         // Reset warm-up flag so the UI reflects the eviction:
         // "Model ready in memory" → "Model downloaded"
         await MainActor.run {
