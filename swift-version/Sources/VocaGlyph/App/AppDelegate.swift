@@ -189,6 +189,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow.center()
         settingsWindow.setFrameAutosaveName("SettingsWindow")
         settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.delegate = self
         settingsWindow.contentViewController = hostingController
         settingsWindow.title = "VocaGlyph Settings"
         
@@ -270,10 +271,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleSettingsWindow(_ sender: AnyObject?) {
         if settingsWindow.isVisible {
             settingsWindow.orderOut(nil)
+            // Revert to accessory so the app disappears from Cmd+Tab and Dock
+            // now that no window is visible.
+            NSApp.setActivationPolicy(.accessory)
         } else {
-            // makeKeyAndOrderFront ensures window comes to front
+            // Switch to .regular so the app appears in Cmd+Tab and can become
+            // a true key window. .accessory prevents the window from fully
+            // activating and receiving keyboard focus on machines without prior
+            // Launch Services registration (i.e. fresh DMG installs).
+            NSApp.setActivationPolicy(.regular)
             settingsWindow.makeKeyAndOrderFront(nil)
-            // Bring app to front so it has focus and can intercept clicks
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -343,15 +350,21 @@ extension AppDelegate: NSMenuDelegate {
 // MARK: - NSWindowDelegate
 extension AppDelegate: NSWindowDelegate {
     public func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow,
-              window === onboardingWindow else { return }
-        // The user closed the onboarding window via the red ✕ button before completing
-        // setup. Because the app runs with .accessory activation policy (no Dock icon,
-        // no menu bar until core services are initialized), there is no other way for
-        // the user to quit. Terminate cleanly.
-        // NOTE: this fires ONLY for red-X closes because Continue now uses orderOut()
-        // instead of close(), which does NOT trigger windowWillClose.
-        NSApp.terminate(nil)
+        guard let window = notification.object as? NSWindow else { return }
+
+        if window === onboardingWindow {
+            // The user closed the onboarding window via the red ✕ button before completing
+            // setup. Because the app runs with .accessory activation policy (no Dock icon,
+            // no menu bar until core services are initialized), there is no other way for
+            // the user to quit. Terminate cleanly.
+            // NOTE: this fires ONLY for red-X closes because Continue now uses orderOut()
+            // instead of close(), which does NOT trigger windowWillClose.
+            NSApp.terminate(nil)
+        } else if window === settingsWindow {
+            // Settings closed via the red ✕ button — revert to .accessory so the
+            // app disappears from Cmd+Tab and the Dock.
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }
 
