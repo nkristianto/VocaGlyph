@@ -68,7 +68,8 @@
 				5E598C492F4DE0160023136C /* Sources */,
 				5E598C4A2F4DE0160023136C /* Frameworks */,
 				5E598C4B2F4DE0160023136C /* Resources */,
-				5E598C672F4DE9090023136C /* ShellScript */,
+				5E598C672F4DE9090023136C /* Attach metalib */,
+				5E8F35152F501F9B00F1624D /* Set Build Number From Git */,
 			);
 			buildRules = (
 			);
@@ -140,7 +141,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		5E598C672F4DE9090023136C /* ShellScript */ = {
+		5E598C672F4DE9090023136C /* Attach metalib */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -149,6 +150,7 @@
 			);
 			inputPaths = (
 			);
+			name = "Attach metalib";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -157,6 +159,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Compile MLX Metal shaders from Xcode-managed SPM checkouts\n# Xcode resolves SPM packages into SourcePackages/checkouts/ inside DerivedData\n# SRCROOT = xcode-project/VocaGlyph, so ../../swift-version = voice-to-text/swift-version\n\n# Find mlx-swift in Xcode's SourcePackages (where Xcode puts SPM checkouts).\n# BUILD_DIR = .../DerivedData/<Project>/Build/Products\n# Two dirname calls go up to .../DerivedData/<Project>/ where SourcePackages lives.\nDERIVED_DATA_PROJECT_DIR=$(dirname \"$(dirname \"${BUILD_DIR}\")\")\nMLX_SWIFT_CHECKOUT=\"${DERIVED_DATA_PROJECT_DIR}/SourcePackages/checkouts/mlx-swift\"\nMLX_METAL_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx/mlx-generated/metal\"\nMLX_INCLUDE_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx\"\nMLX_AIR_DIR=\"${DERIVED_FILE_DIR}/mlx-air\"\nMLX_OUT=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/mlx.metallib\"\n\nif [ ! -d \"${MLX_METAL_DIR}\" ]; then\n  echo \"warning: MLX Metal shaders not found at ${MLX_METAL_DIR} — skipping metallib build\"\n  exit 0\nfi\n\nmkdir -p \"${MLX_AIR_DIR}\"\n\nfor f in \"${MLX_METAL_DIR}\"/*.metal; do\n  name=$(basename \"$f\" .metal)\n  xcrun metal -std=metal3.1 -O2 -I \"${MLX_INCLUDE_DIR}\" -c \"$f\" -o \"${MLX_AIR_DIR}/${name}.air\"\ndone\n\nxcrun metallib \"${MLX_AIR_DIR}\"/*.air -o \"${MLX_OUT}\"\n\n# Sign the metallib with the same identity Xcode uses for the app.\n# Without this, codesign rejects the app bundle because it contains\n# an unsigned binary subcomponent.\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ] && [ \"${CODE_SIGNING_REQUIRED}\" != \"NO\" ]; then\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${MLX_OUT}\"\n  echo \"MLX metallib signed with: ${EXPANDED_CODE_SIGN_IDENTITY}\"\nfi\n\necho \"MLX metallib built: ${MLX_OUT}\"\n";
+		};
+		5E8F35152F501F9B00F1624D /* Set Build Number From Git */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Set Build Number From Git";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "BUILD_NUMBER=$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || echo \"1\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\necho \"Setting CFBundleVersion=$BUILD_NUMBER in $PLIST\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$PLIST\"\n  echo \"✅ Build number set to $BUILD_NUMBER\"\nelse\n  echo \"error: Info.plist not found at $PLIST\"\n  exit 1\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -324,7 +345,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocaglyph.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -365,7 +386,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocaglyph.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

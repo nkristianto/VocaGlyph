@@ -1,8 +1,62 @@
-build/bin
-node_modules
-frontend/dist
+# ── macOS ─────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Swift Package Manager ─────────────────────────────────────
+swift-version/.build/
+swift-version/build/
+.build/
+/Packages/
+
+# ── Xcode ─────────────────────────────────────────────────────
+xcuserdata/
+DerivedData/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+.swiftpm/xcode/xcuserdata/
+.swiftpm/configuration/registries.json
+
+# ── AI Agent Framework ────────────────────────────────────────
 _bmad/
 _bmad-output/
-.agent/
+
+# ── Legacy / Scratch ──────────────────────────────────────────
 outdated/
+
+# ── Documentation (local dev notes) ──────────────────────────
 docs/
+
+# ── Secrets & Credentials ─────────────────────────────────────
+*.p12
+*.pem
+*.key
+.netrc
+/tmp/vg_key.b64
+
+# ── Build binaries / compiled artifacts ───────────────────────
+*.dmg
+*.app
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.swiftinterface
+*.abi.json
+
+# ── Logs & Profiling ──────────────────────────────────────────
+*.log
+*.profraw
+
+# ── Scratch scripts ───────────────────────────────────────────
+/test_*.swift
+/dummy.swift
+/dump.swift
+
+# ── Node (legacy) ─────────────────────────────────────────────
+node_modules/
+frontend/dist/
+build/bin/
