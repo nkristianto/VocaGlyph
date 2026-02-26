@@ -206,7 +206,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = statusItem.button {
             let imgUrl = Bundle.main.url(forResource: "appbaricon", withExtension: "png")
                       ?? Bundle.module.url(forResource: "appbaricon", withExtension: "png")
-            Logger.shared.info("AppDelegate: appbaricon URL = \(String(describing: imgUrl))")
+            Logger.shared.info("AppDelegate: appbaricon URL = \(imgUrl?.absoluteString ?? "nil")")
             if let imgUrl, let nsImage = NSImage(contentsOf: imgUrl) {
                 // Resize to menu bar icon dimensions
                 nsImage.size = NSSize(width: 18, height: 18)
@@ -339,7 +339,7 @@ extension AppDelegate: NSMenuDelegate {
         // Refresh device list and rebuild the submenu each time the status-bar
         // menu is about to open, so newly connected devices are visible immediately.
         if let subMenu = microphoneMenuItem?.submenu {
-            microphoneService.refreshDevices()
+            microphoneService.refreshDevices(reason: "menu-open")
             rebuildMicrophoneSubmenu()
             _ = subMenu // suppress unused warning
         }

@@ -229,7 +229,7 @@ public actor LocalLLMEngine: PostProcessingEngine {
         // Read user-configured parameters from UserDefaults at inference time.
         let inferenceConfig = LLMInferenceConfiguration.fromUserDefaults()
         PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] model=\(modelId) input=\(text.count) chars")
-        PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] Prompt: '\(prompt)'")
+        PostProcessingLogger.shared.debug("LocalLLMEngine: [REQUEST] Prompt: '\(prompt)'")
         PostProcessingLogger.shared.info("LocalLLMEngine: [REQUEST] Input text: '\(text)'")
         PostProcessingLogger.shared.info("LocalLLMEngine: [PARAMS] temperature=\(inferenceConfig.temperature) topP=\(inferenceConfig.topP) repetitionPenalty=\(inferenceConfig.repetitionPenalty.map { String($0) } ?? "nil")")
         let fullPrompt = buildPrompt(system: prompt, userText: text)

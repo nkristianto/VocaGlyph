@@ -85,6 +85,12 @@ class HotkeyService {
     private var targetKeyCode: CGKeyCode = CGKeyCode(UserDefaults.defaultShortcutKeyCode)
     private var targetFlags: CGEventFlags = CGEventFlags(rawValue: UserDefaults.defaultShortcutModifiers)
 
+    /// Tracks the last shortcut that was actually registered, so redundant calls
+    /// from `UserDefaults.didChangeNotification` (fired for every key during startup)
+    /// do not produce duplicate log entries or re-registration work.
+    private var lastRegisteredKeyCode: CGKeyCode? = nil
+    private var lastRegisteredFlags: CGEventFlags? = nil
+
     private let stateManager: AppStateManager
 
     // --- Re-entry guards (accessed only on the CGEvent callback thread) ---
@@ -118,8 +124,18 @@ class HotkeyService {
         let modifiersRaw = UserDefaults.standard.object(forKey: UserDefaults.customShortcutModifiersKey) as? UInt64
             ?? UserDefaults.defaultShortcutModifiers
 
-        self.targetKeyCode = CGKeyCode(keyCodeInt)
-        self.targetFlags = CGEventFlags(rawValue: modifiersRaw)
+        let newKeyCode = CGKeyCode(keyCodeInt)
+        let newFlags = CGEventFlags(rawValue: modifiersRaw)
+
+        // AC #4: skip re-registration if the resolved shortcut hasn't changed.
+        // UserDefaults.didChangeNotification fires for every stored key during startup
+        // (6+ times), producing redundant log lines and unnecessary re-registration work.
+        guard newKeyCode != lastRegisteredKeyCode || newFlags != lastRegisteredFlags else { return }
+
+        self.targetKeyCode = newKeyCode
+        self.targetFlags = newFlags
+        self.lastRegisteredKeyCode = newKeyCode
+        self.lastRegisteredFlags = newFlags
 
         let display = ShortcutDisplayHelper.displayString(keyCode: targetKeyCode, flags: targetFlags)
         Logger.shared.info("Hotkey Service updated to listen for: \(display) (Code: \(targetKeyCode), Flags: \(targetFlags.rawValue))")

@@ -263,7 +263,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         }
 
         let shouldPostProcess = UserDefaults.standard.bool(forKey: "enablePostProcessing")
-        let postProcessPrompt = buildActiveTemplatePrompt()
+        let (postProcessPrompt, templateName) = buildActiveTemplatePrompt()
 
         Task {
             // ── Stage 1: Transcription (15s timeout) ─────────────────────────────
@@ -304,7 +304,8 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             if shouldPostProcess,
                let postProcessor = self.postProcessingEngine,
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Logger.shared.info("AppStateManager: [PostProcessing] Starting with prompt: '\(postProcessPrompt)'")
+                Logger.shared.info("AppStateManager: [PostProcessing] Starting — template: '\(templateName)'")
+                Logger.shared.debug("AppStateManager: [PostProcessing] Full prompt: '\(postProcessPrompt)'")
                 do {
                     let refined = try await withThrowingTaskGroup(of: String.self) { group in
                         group.addTask { try await postProcessor.refine(text: text, prompt: postProcessPrompt) }
@@ -443,16 +444,18 @@ extension AppStateManager {
     /// Fetches the active `PostProcessingTemplate` from SwiftData and renders it
     /// into a structured system prompt via `TemplatePromptRenderer`.
     ///
-    /// Returns an empty string when:
+    /// Returns `(prompt, templateName)`. Both are empty strings when:
     /// - No `modelContext` is available (no SwiftData container)
     /// - No active template ID is stored in `UserDefaults`
-    /// - The active template has no enabled rules (e.g., "Raw — No Processing")
-    private func buildActiveTemplatePrompt() -> String {
+    /// - The active template has no enabled rules
+    ///
+    /// AC #5: full prompt is now logged at DEBUG level only; callers log template name at INFO.
+    private func buildActiveTemplatePrompt() -> (prompt: String, templateName: String) {
         guard let context = modelContext,
               let idString = UserDefaults.standard.string(forKey: TemplateSeederService.activeTemplateKey),
               let templateId = UUID(uuidString: idString) else {
             Logger.shared.info("AppStateManager: No active template ID found — skipping post-processing prompt.")
-            return ""
+            return ("", "")
         }
 
         let descriptor = FetchDescriptor<PostProcessingTemplate>(
@@ -460,12 +463,12 @@ extension AppStateManager {
         )
         guard let template = try? context.fetch(descriptor).first else {
             Logger.shared.error("AppStateManager: Active template ID \(templateId) not found in SwiftData.")
-            return ""
+            return ("", "")
         }
 
         let prompt = TemplatePromptRenderer.render(template: template)
         Logger.shared.info("AppStateManager: Rendered template '\(template.name)' (\(prompt.count) chars)")
-        return prompt
+        return (prompt, template.name)
     }
 }
 

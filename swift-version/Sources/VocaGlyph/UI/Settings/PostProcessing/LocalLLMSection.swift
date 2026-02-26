@@ -98,7 +98,7 @@ struct LocalLLMSection: View {
                         Text("Model ready in memory").fontWeight(.semibold).foregroundStyle(Theme.navy)
                     } else if stateManager.localLLMIsDownloaded && stateManager.localLLMDownloadProgress != nil {
                         ProgressView().controlSize(.mini).tint(Theme.accent)
-                        Text("Loading model into memory…").fontWeight(.semibold).foregroundStyle(Theme.navy)
+                        Text("Warming up AI model…").fontWeight(.semibold).foregroundStyle(Theme.navy)
                     } else if stateManager.localLLMIsDownloaded {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                         Text("Model downloaded").fontWeight(.semibold).foregroundStyle(Theme.navy)
@@ -123,7 +123,8 @@ struct LocalLLMSection: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textMuted)
                 } else if !stateManager.localLLMIsWarmedUp {
-                    Text("Model loaded on next use. Launch app again to warm up automatically.")
+                    // AC #3: accurate status — model on disk, warm-up pending or in background
+                    Text("Warming up AI model in background — raw text will be pasted until ready.")
                         .font(.system(size: 12))
                         .foregroundStyle(Theme.textMuted)
                 }

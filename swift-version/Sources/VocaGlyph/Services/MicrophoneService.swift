@@ -57,7 +57,7 @@ final class MicrophoneService {
     init() {
         // Restore persisted selection
         selectedUID = UserDefaults.standard.string(forKey: Self.selectedMicrophoneUIDKey)
-        refreshDevices()
+        refreshDevices(reason: "startup")
         registerHardwareListeners()
     }
 
@@ -68,10 +68,12 @@ final class MicrophoneService {
     // MARK: - Public API
 
     /// Re-enumerates all audio input devices and updates `availableInputs`.
-    func refreshDevices() {
+    /// - Parameter reason: Human-readable description of why the scan was triggered
+    ///   (e.g. "startup", "audio-route-change", "menu-open"). AC #6.
+    func refreshDevices(reason: String = "unknown") {
         let devices = enumerateInputDevices()
         availableInputs = [.systemDefault] + devices
-        Logger.shared.info("MicrophoneService: Found \(devices.count) input device(s).")
+        Logger.shared.info("MicrophoneService: Found \(devices.count) input device(s). [reason: \(reason)]")
     }
 
     /// Sets `device` as the preferred input. Pass `.systemDefault` to clear the override.
@@ -267,14 +269,14 @@ final class MicrophoneService {
     @objc private func handleDeviceConnected(_ notification: Notification) {
         Task { @MainActor in
             Logger.shared.info("MicrophoneService: Audio device connected — refreshing list.")
-            self.refreshDevices()
+            self.refreshDevices(reason: "audio-device-connected")
         }
     }
 
     @objc private func handleDeviceDisconnected(_ notification: Notification) {
         Task { @MainActor in
             Logger.shared.info("MicrophoneService: Audio device disconnected — refreshing list.")
-            self.refreshDevices()
+            self.refreshDevices(reason: "audio-device-disconnected")
             // If the disconnected device was selected, fall back to system default.
             if let uid = self.selectedUID, !uid.isEmpty {
                 let stillAvailable = self.availableInputs.contains { $0.uid == uid }
