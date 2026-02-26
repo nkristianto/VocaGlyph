@@ -4,4 +4,5 @@ frontend/dist
 _bmad/
 _bmad-output/
 .agent/
-[outdated]/
+outdated/
+docs/
