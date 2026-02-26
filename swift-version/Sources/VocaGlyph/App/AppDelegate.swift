@@ -2,6 +2,7 @@ import Cocoa
 import SwiftUI
 import AppKit
 import SwiftData
+import Sparkle
 
 public class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
@@ -56,10 +57,42 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var permissionsService = PermissionsService()
     var onboardingWindow: NSWindow?
 
+    // MARK: - Sparkle Auto-Update
+    private var updaterController: SPUStandardUpdaterController!
+    private var checkForUpdatesViewModel: CheckForUpdatesViewModel!
+    private var checkForUpdatesMenuItem: NSMenuItem!
+
+    /// Bump this ONLY when shipping a breaking change that makes old versions
+    /// incompatible (e.g. new model format, changed storage schema).
+    /// Users running a build < this number cannot start the app until updated.
+    private let minimumRequiredBuild = 1
+
     public func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // ── Sparkle: initialise the updater as early as possible so background
+        //    checks can begin and the forced-update guard below works correctly.
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: self,
+            userDriverDelegate: nil
+        )
+        checkForUpdatesViewModel = CheckForUpdatesViewModel(updater: updaterController.updater)
+
+        // ── Forced-update guard (Option D) ─────────────────────────────────
+        // If the installed build is older than minimumRequiredBuild, block the
+        // app from starting and let Sparkle immediately show the update dialog.
+        // Once the user installs the update and the app relaunches, this check
+        // passes and normal startup continues.
+        let currentBuild = Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0") ?? 0
+        if currentBuild < minimumRequiredBuild {
+            // Show the mandatory update sheet; do NOT call initializeCoreServices.
+            // The app stays as a dormant menu-bar icon until the update installs.
+            updaterController.updater.checkForUpdates()
+            return
+        }
+
         // Hide application from dock and cmd-tab switcher
         NSApp.setActivationPolicy(.accessory)
-        
+
         if permissionsService.areAllCorePermissionsGranted {
             initializeCoreServices()
         } else {
@@ -192,6 +225,16 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         settingsMenuItem.target = self
         menu.addItem(settingsMenuItem)
 
+        // ── Sparkle: Check for Updates item ───────────────────────────────
+        checkForUpdatesMenuItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        checkForUpdatesMenuItem.target = self
+        checkForUpdatesMenuItem.isEnabled = checkForUpdatesViewModel.canCheckForUpdates
+        menu.addItem(checkForUpdatesMenuItem)
+
         // ── Microphone submenu ────────────────────────────────────────
         microphoneMenuItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
         microphoneMenuItem.submenu = NSMenu(title: "Microphone")
@@ -208,6 +251,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
     
+    /// Triggered by "Check for Updates…" in the status-bar menu.
+    @objc private func checkForUpdates(_ sender: Any) {
+        updaterController.checkForUpdates(sender)
+    }
+
     @objc func simulateRecording() {
         stateManager.startRecording()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -276,12 +324,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - NSMenuDelegate
 extension AppDelegate: NSMenuDelegate {
     public func menuWillOpen(_ menu: NSMenu) {
+        guard menu === statusItem.menu else { return }
+
+        // Keep "Check for Updates…" in sync with Sparkle's internal state.
+        checkForUpdatesMenuItem?.isEnabled = checkForUpdatesViewModel.canCheckForUpdates
+
         // Refresh device list and rebuild the submenu each time the status-bar
         // menu is about to open, so newly connected devices are visible immediately.
-        guard let subMenu = microphoneMenuItem?.submenu, menu === statusItem.menu else { return }
-        microphoneService.refreshDevices()
-        rebuildMicrophoneSubmenu()
-        _ = subMenu // suppress unused warning
+        if let subMenu = microphoneMenuItem?.submenu {
+            microphoneService.refreshDevices()
+            rebuildMicrophoneSubmenu()
+            _ = subMenu // suppress unused warning
+        }
     }
 }
 
@@ -471,5 +525,16 @@ extension AppDelegate: WhisperServiceDelegate {
                 }
             }
         }
+    }
+}
+
+// MARK: - SPUUpdaterDelegate (Sparkle)
+extension AppDelegate: SPUUpdaterDelegate {
+    /// Called by Sparkle before presenting an update to the user.
+    /// Return false to make a specific release non-skippable.
+    /// In practice, the appcast's `minimumAutoupdateVersion` key handles
+    /// mandatory enforcement — returning true here is the standard path.
+    public func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        return false // Install immediately; do not delay relaunch
     }
 }

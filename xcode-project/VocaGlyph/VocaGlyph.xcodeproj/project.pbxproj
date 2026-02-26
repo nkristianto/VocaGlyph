@@ -11,6 +11,7 @@
 		5E598C682F4EAA000023136C /* VocaGlyphLib in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598C692F4EAA000023136C /* VocaGlyphLib */; };
 		5E598CAD2F4F47370023136C /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598CAC2F4F47370023136C /* MLXLLM */; };
 		5E598CAF2F4F47370023136C /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598CAE2F4F47370023136C /* MLXLMCommon */; };
+		5E598CCA2F5014620023136C /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5E598CC92F5014620023136C /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E598CCA2F5014620023136C /* Sparkle in Frameworks */,
 				5E598CAD2F4F47370023136C /* MLXLLM in Frameworks */,
 				5E598C682F4EAA000023136C /* VocaGlyphLib in Frameworks */,
 				5E598CAF2F4F47370023136C /* MLXLMCommon in Frameworks */,
@@ -81,6 +83,7 @@
 				5E598C5D2F4DE3E10023136C /* WhisperKit */,
 				5E598CAC2F4F47370023136C /* MLXLLM */,
 				5E598CAE2F4F47370023136C /* MLXLMCommon */,
+				5E598CC92F5014620023136C /* Sparkle */,
 			);
 			productName = VocaGlyph;
 			productReference = 5E598C4D2F4DE0160023136C /* VocaGlyph.app */;
@@ -114,6 +117,7 @@
 				5E598C5C2F4DE3E10023136C /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				5E598C612F4DE6A60023136C /* XCLocalSwiftPackageReference "../../swift-version" */,
 				5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				5E598CC82F5014620023136C /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5E598C4E2F4DE0160023136C /* Products */;
@@ -299,6 +303,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = "../../swift-version/VocaGlyph.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -420,6 +425,14 @@
 				minimumVersion = 2.30.6;
 			};
 		};
+		5E598CC82F5014620023136C /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -442,6 +455,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5E598CAB2F4F47370023136C /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
+		};
+		5E598CC92F5014620023136C /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E598CC82F5014620023136C /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

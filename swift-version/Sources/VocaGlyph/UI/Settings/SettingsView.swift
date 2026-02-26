@@ -77,6 +77,14 @@ struct SettingsView: View {
 struct CustomSidebar: View {
     @Binding var selectedTab: SettingsTab?
     
+    /// Reads the version directly from Info.plist — the same source Sparkle uses.
+    /// Displays as "v1.0 (1)" — marketing version + build number.
+    private var appVersionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build   = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "v\(version) (\(build))"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Padding for native macOS traffic lights (red/yellow/green buttons)
@@ -125,7 +133,7 @@ struct CustomSidebar: View {
                 Text("Under Development")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.accent)
-                Text("Version 0.0.1 (Beta)")
+                Text(appVersionString)
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
             }
