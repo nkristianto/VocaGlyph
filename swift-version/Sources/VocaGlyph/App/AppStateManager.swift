@@ -115,26 +115,48 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     func startEngine() {
         let initialModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
         Logger.shared.info("AppStateManager: startEngine called with model: \(initialModel)")
+
+        // AC #1: sequence the loads — Whisper first, then LLM.
+        // switchTranscriptionEngine() returns quickly (it only calls router.setEngine).
+        // The actual WhisperKit model load happens asynchronously and signals completion
+        // by transitioning currentState from .initializing → .idle via the delegate.
+        // We poll currentState here (500ms interval, 60s max) so warmUpLocalLLMIfNeeded()
+        // never fires while Whisper is still occupying memory bandwidth.
         Task {
             await switchTranscriptionEngine(toModel: initialModel)
+
+            // Wait for Whisper to finish loading. State goes: .idle → .initializing → .idle.
+            // The first transition to .initializing happens inside WhisperService start;
+            // we need the return to .idle (= "Ready" delegate callback from WhisperKit).
+            let maxIterations = 120  // 120 × 0.5s = 60s max wait
+            var iterations = 0
+            // Give the state machine a moment to enter .initializing before we start polling.
+            try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5s ramp-up
+            while currentState == .initializing && iterations < maxIterations {
+                try? await Task.sleep(nanoseconds: 500_000_000)  // poll every 0.5s
+                iterations += 1
+            }
+
+            let elapsedSeconds = Double(iterations + 1) * 0.5
+            if currentState == .idle {
+                Logger.shared.info("AppStateManager: Whisper ready after ~\(String(format: "%.1f", elapsedSeconds))s — starting LLM warm-up now.")
+                warmUpLocalLLMIfNeeded()
+            } else {
+                Logger.shared.info("AppStateManager: Whisper not idle after \(Int(elapsedSeconds))s (state: \(currentState)) — skipping LLM warm-up.")
+            }
         }
 
         switchPostProcessingEngine()
 
-        // Strategy 1: Eagerly warm up the local LLM in the background if it is
-        // already selected AND the model weights are on disk. This eliminates the
-        // 5–30 s lag users would otherwise experience on their first dictation.
-        // We never trigger a network download here — only load from disk.
-        warmUpLocalLLMIfNeeded()
-
-        // Strategy 2: Respond to macOS memory pressure events so the model is
+        // Strategy: Respond to macOS memory pressure events so the LLM model is
         // automatically evicted if the system is critically low on unified memory.
         registerMemoryPressureHandler()
     }
 
     /// Registers a system memory-pressure DispatchSource.
     /// On `.warning`  — logs only (model stays loaded for faster next dictation).
-    /// On `.critical` — evicts the LLM model to reclaim unified memory immediately.
+    /// On `.critical` — logs only; eviction is intentionally deferred until we have
+    ///                   sufficient field data to determine safe thresholds.
     private func registerMemoryPressureHandler() {
         let source = DispatchSource.makeMemoryPressureSource(
             eventMask: [.warning, .critical],
@@ -144,14 +166,13 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             let event = source.mask
             if event.contains(.critical) {
+                // Log-only: do NOT evict the LLM.
+                // The user explicitly chose local post-processing; silently unloading
+                // mid-session is more disruptive than the pressure itself.
+                // We will revisit eviction once we have enough field data.
                 Task {
                     let isLoaded = await self._localLLMEngine?.isModelLoaded() ?? false
-                    if isLoaded {
-                        Logger.shared.error("AppStateManager: 🔴 Critical memory pressure — evicting LLM model from unified memory.")
-                    } else {
-                        Logger.shared.info("AppStateManager: 🔴 Critical memory pressure received — LLM not loaded, nothing to evict.")
-                    }
-                    await self.unloadLocalLLMEngine()
+                    Logger.shared.error("AppStateManager: 🔴 Critical memory pressure — LLM loaded=\(isLoaded). No action taken (eviction deferred).")
                 }
 
             } else if event.contains(.warning) {
@@ -303,6 +324,7 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             var finalText = text
             if shouldPostProcess,
                let postProcessor = self.postProcessingEngine,
+               self.localLLMIsWarmedUp,   // AC #2: skip silently if LLM still warming up
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Logger.shared.info("AppStateManager: [PostProcessing] Starting — template: '\(templateName)'")
                 Logger.shared.debug("AppStateManager: [PostProcessing] Full prompt: '\(postProcessPrompt)'")
@@ -327,6 +349,9 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                     let engineName = type(of: postProcessor)
                     Logger.shared.error("AppStateManager: [PostProcessing] \(engineName) failed — \(error.localizedDescription). Using raw transcription.")
                 }
+            } else if shouldPostProcess && !self.localLLMIsWarmedUp {
+                // AC #2: LLM still loading in background — paste raw text immediately, no blocking.
+                Logger.shared.info("AppStateManager: [PostProcessing] Skipped — LLM still warming up. Pasting raw transcription.")
             }
 
             DispatchQueue.main.async {
