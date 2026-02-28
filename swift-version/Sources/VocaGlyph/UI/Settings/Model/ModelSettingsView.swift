@@ -4,6 +4,7 @@ import SwiftUI
 /// Shows all Whisper model cards and handles the delete-confirmation overlay.
 struct ModelSettingsView: View {
     @ObservedObject var whisper: WhisperService
+    @ObservedObject var parakeet: ParakeetService
     @ObservedObject var stateManager: AppStateManager
     @AppStorage("selectedModel") private var selectedModel: String = "apple-native"
     @State private var focusedModel: String = "apple-native"
@@ -44,7 +45,43 @@ struct ModelSettingsView: View {
 
                     ScrollView {
                         VStack(spacing: 12) {
+                            // ⚡ Speed-First (Parakeet) section — above Whisper models
+                            Label {
+                                Text("⚡ Speed-First (Parakeet)")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.navy)
+                            } icon: {
+                                EmptyView()
+                            }
+                            .padding(.top, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                             appleNativeCard
+                            // Divider before Whisper section
+                            Divider()
+                                .background(Theme.textMuted.opacity(0.2))
+                                .padding(.vertical, 4)
+
+                            parakeetCard(
+                                id: "parakeet-v3",
+                                title: "Parakeet TDT v3 (Multilingual)",
+                                description: "NVIDIA Parakeet TDT CoreML. Supports 25 European languages + English. ~190× real-time on Apple Silicon ANE. Zero cloud dependency.",
+                                size: "483 MB",
+                                recommendationBadge: "⚡ ~20× faster than Whisper"
+                            )
+                            parakeetCard(
+                                id: "parakeet-v2",
+                                title: "Parakeet TDT v2 (English-only)",
+                                description: "English-only Parakeet TDT model. Slightly smaller footprint than v3. Ideal for English-only workflows on lower-RAM Macs.",
+                                size: "464 MB"
+                            )
+
+                            // Divider before Whisper section
+                            Divider()
+                                .background(Theme.textMuted.opacity(0.2))
+                                .padding(.vertical, 4)
+
+                            
                             whisperCard(id: "small", title: "Small (Multilingual)",
                                         description: "Higher accuracy with acceptable speeds on modern Mac hardware.",
                                         size: "240 MB")
@@ -170,4 +207,49 @@ struct ModelSettingsView: View {
             }
         )
     }
+
+    /// Parakeet model card builder — mirrors whisperCard() exactly.
+    @ViewBuilder
+    private func parakeetCard(
+        id: String,
+        title: String,
+        description: String,
+        size: String,
+        recommendationBadge: String? = nil
+    ) -> some View {
+        let isDownloading = parakeet.downloadingModelId == id
+        let isAlreadyDownloaded = parakeet.downloadedModels.contains(id)
+
+        ModelCardView(
+            title: title,
+            description: description,
+            size: size,
+            isSelected: focusedModel == id,
+            isDownloaded: isAlreadyDownloaded,
+            isActive: selectedModel == id && parakeet.activeModel == id,
+            // "Initializing..." spinner on the Use Model button (post-download ANE load phase)
+            isLoading: isDownloading && isAlreadyDownloaded,
+            // Show phased progress % (25%, 60%, 85%) from ParakeetService.loadingProgress
+            // so ModelCardView renders the animated arrow + percentage, identical to Whisper.
+            downloadProgress: isDownloading && !isAlreadyDownloaded ? Float(parakeet.loadingProgress) : nil,
+            recommendationBadge: recommendationBadge,
+            onSelect: { focusedModel = id },
+            onUse: {
+                selectedModel = id
+                parakeet.changeModel(to: id)
+                Task { await stateManager.switchTranscriptionEngine(toModel: id) }
+            },
+            onDownload: {
+                parakeet.downloadOnly(id: id)
+            },
+
+            onDeleteRequest: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    modelToDeleteTitle = title
+                    modelDeleteAction = { parakeet.deleteModel(id: id) }
+                }
+            }
+        )
+    }
 }
+

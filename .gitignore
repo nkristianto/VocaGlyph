@@ -60,3 +60,4 @@ docs/
 node_modules/
 frontend/dist/
 build/bin/
+.agent/

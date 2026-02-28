@@ -9,6 +9,11 @@ struct RecordingOverlayView: View {
     @State private var processingRotation: Double = 0
 
     var body: some View {
+        // Use whichever engine is actively loading (Parakeet takes precedence when both are non-zero)
+        let modelLoadingProgress = stateManager.parakeetLoadingProgress > 0
+            ? stateManager.parakeetLoadingProgress
+            : stateManager.whisperLoadingProgress
+
         Group {
             if stateManager.currentState == .recording || stateManager.currentState == .processing || stateManager.currentState == .initializing || stateManager.notReadyMessage != nil {
                 ZStack {
@@ -33,10 +38,6 @@ struct RecordingOverlayView: View {
                                         .foregroundStyle(Theme.navy)
                                 }
 
-                                // Progress bar: .overlay on the gray track ensures the blue
-                                // fill inherits its exact bounds. Using ZStack+GeometryReader
-                                // was placing them in separate layout passes, making two
-                                // visually distinct bars.
                                 Capsule()
                                     .fill(Color.black.opacity(0.08))
                                     .frame(height: 3)
@@ -45,25 +46,31 @@ struct RecordingOverlayView: View {
                                             Capsule()
                                                 .fill(Theme.accent)
                                                 .frame(
-                                                    width: geo.size.width * stateManager.whisperLoadingProgress,
+                                                    width: geo.size.width * modelLoadingProgress,
                                                     height: 3
                                                 )
                                         }
                                         .frame(height: 3)
                                         .animation(
-                                            stateManager.whisperLoadingProgress > 0
+                                            modelLoadingProgress > 0
                                                 ? .linear(duration: 0.5)
                                                 : .none,
-                                            value: stateManager.whisperLoadingProgress
+                                            value: modelLoadingProgress
                                         )
                                     }
 
-                                // ETA label
-                                if stateManager.whisperLoadingETA > 1 {
+                                // ETA / progress label
+                                if stateManager.parakeetLoadingProgress > 0 {
+                                    Text("\(Int(stateManager.parakeetLoadingProgress * 100))%")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.textMuted)
+                                        .contentTransition(.numericText())
+                                } else if stateManager.whisperLoadingETA > 1 {
                                     Text("~\(stateManager.whisperLoadingETA)s remaining")
                                         .font(.system(size: 10))
                                         .foregroundStyle(Theme.textMuted)
                                 }
+
                             }
                             .padding(.vertical, 4)
 

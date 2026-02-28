@@ -12,6 +12,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     var hotkeyService: HotkeyService!
     var audioRecorder: AudioRecorderService!
     var whisper: WhisperService!
+    var parakeet: ParakeetService!
     var output: OutputService!
 
     /// Manages microphone enumeration and selection.
@@ -166,6 +167,8 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         whisper.delegate = self
         stateManager.sharedWhisper = whisper // Let AppStateManager reuse this single instance
         stateManager.engineRouter = EngineRouter(engine: whisper) // initial default
+        parakeet = ParakeetService()
+        stateManager.sharedParakeet = parakeet // AC#7: single shared ParakeetService instance
         stateManager.startEngine() // Boot up whatever model is selected in UserDefaults
         output = OutputService()
         hotkeyService = HotkeyService(stateManager: stateManager)
@@ -173,7 +176,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Setup Settings Window
         var anySettingsView: AnyView
-        let settingsView = SettingsView(whisper: whisper, stateManager: stateManager, microphoneService: microphoneService)
+        let settingsView = SettingsView(whisper: whisper, parakeet: parakeet, stateManager: stateManager, microphoneService: microphoneService)
         if let container = sharedModelContainer {
             anySettingsView = AnyView(settingsView.modelContainer(container))
         } else {
@@ -382,10 +385,14 @@ extension AppDelegate: AudioRecorderConfigChangeDelegate {
 extension AppDelegate: AppStateManagerDelegate {
     // MARK: - AppStateManagerDelegate
     func appStateDidChange(newState: AppState) {
-        let button = statusItem.button
-        
+        guard let button = statusItem?.button else {
+            // statusItem may not be set up yet during app startup — ignore.
+            Logger.shared.info("AppDelegate: appStateDidChange(\(newState)) skipped — statusItem not ready yet.")
+            return
+        }
         switch newState {
         case .idle:
+
             // Let HotkeyService know it can accept the next hotkey press.
             hotkeyService.resetToIdle()
             if let imgUrl = Bundle.main.url(forResource: "appbaricon", withExtension: "png")
@@ -393,18 +400,18 @@ extension AppDelegate: AppStateManagerDelegate {
                let nsImage = NSImage(contentsOf: imgUrl) {
                 nsImage.size = NSSize(width: 18, height: 18)
                 nsImage.isTemplate = false
-                button?.image = nsImage
+                button.image = nsImage
             } else {
-                button?.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VocaGlyph")
+                button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VocaGlyph")
             }
         case .initializing:
             let img = NSImage(systemSymbolName: "gearshape.fill", accessibilityDescription: "initializing")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemYellow])
-            button?.image = img?.withSymbolConfiguration(config)
+            button.image = img?.withSymbolConfiguration(config)
         case .recording:
             let img = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "recording")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
-            button?.image = img?.withSymbolConfiguration(config)
+            button.image = img?.withSymbolConfiguration(config)
 
             // Run AVAudioEngine.start() on a background serial queue so it never
             // blocks the main thread. On the very first launch the engine can take
@@ -438,7 +445,7 @@ extension AppDelegate: AppStateManagerDelegate {
         case .processing:
             let img = NSImage(systemSymbolName: "hourglass.circle.fill", accessibilityDescription: "processing")
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
-            button?.image = img?.withSymbolConfiguration(config)
+            button.image = img?.withSymbolConfiguration(config)
 
             // If startRecording() is still in flight (fast key tap), queue the
             // stop until it finishes. This prevents a stop-before-start race.

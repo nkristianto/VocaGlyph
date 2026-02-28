@@ -11,6 +11,9 @@ struct ModelCardView: View {
     let isActive: Bool
     let isLoading: Bool
     let downloadProgress: Float?
+    /// When true, shows an indeterminate spinner instead of the static Download button.
+    /// Use this for engines (e.g. FluidAudio/Parakeet) that don't expose granular progress.
+    var isDownloadInProgress: Bool = false
     /// Optional speed/recommendation badge text shown below the title row (e.g. "⚡ ~2× faster · English-optimised").
     var recommendationBadge: String? = nil
     let onSelect: () -> Void
@@ -97,11 +100,30 @@ struct ModelCardView: View {
 
     @ViewBuilder
     private var actionRow: some View {
-        if !isDownloaded {
+        if isDownloadInProgress {
+            // Model is currently downloading — show indeterminate spinner (no granular progress).
+            downloadInProgressView
+        } else if !isDownloaded {
             downloadingOrDownloadButton
         } else if !isActive {
             useAndDeleteButtons
         }
+    }
+
+    /// Indeterminate spinner shown while FluidAudio/Parakeet is downloading.
+    @ViewBuilder
+    private var downloadInProgressView: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.small)
+            Text("Downloading...")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.accent)
+        }
+        .padding(.vertical, 4).padding(.horizontal, 8)
+        .background(Theme.accent.opacity(0.1))
+        .clipShape(.rect(cornerRadius: 6))
     }
 
     @ViewBuilder

@@ -17,6 +17,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
         .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "2.30.6"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.7.9"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -27,6 +28,7 @@ let package = Package(
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ],
             path: "Sources/VocaGlyph", // source folder kept as-is, only module name changes
             exclude: ["App/main.swift"], // Entry point handled by Xcode app target via @NSApplicationDelegateAdaptor

@@ -26,6 +26,12 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         didSet { bindWhisperProgress() }
     }
 
+    /// The shared ParakeetService instance, injected by AppDelegate.
+    /// When a Parakeet model ID is selected, EngineRouter is pointed at this service.
+    var sharedParakeet: ParakeetService? {
+        didSet { bindParakeetProgress() }
+    }
+
     var postProcessingEngine: (any PostProcessingEngine)?
 
     // MARK: - Memory Pressure
@@ -35,11 +41,16 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
 
     // MARK: - Combine
     private var whisperCancellables: Set<AnyCancellable> = []
+    private var parakeetCancellables: Set<AnyCancellable> = []
 
     /// 0.0 → 1.0 forwarded from WhisperService.loadingProgress.
     @Published var whisperLoadingProgress: Double = 0.0
     /// ETA countdown forwarded from WhisperService.loadingEstimatedSeconds.
     @Published var whisperLoadingETA: Int = 0
+
+    /// 0.0 → 1.0 forwarded from ParakeetService.loadingProgress.
+    /// Drives the same RecordingOverlayView progress bar when a Parakeet model is loading.
+    @Published var parakeetLoadingProgress: Double = 0.0
 
     /// Non-nil briefly when the user presses the hotkey while the engine is still loading.
     /// Cleared automatically after 3 seconds.
@@ -56,6 +67,31 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             .receive(on: DispatchQueue.main)
             .assign(to: \.whisperLoadingETA, on: self)
             .store(in: &whisperCancellables)
+    }
+
+    private func bindParakeetProgress() {
+        parakeetCancellables.removeAll()
+        guard let parakeet = sharedParakeet else { return }
+
+        // Forward raw progress value so RecordingOverlayView can animate the bar.
+        parakeet.$loadingProgress
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.parakeetLoadingProgress, on: self)
+            .store(in: &parakeetCancellables)
+
+        // Only handle completion: when loadingProgress resets to 0 after finishing,
+        // return currentState to .idle (if it was set to .initializing by switchTranscriptionEngine).
+        // NOTE: we do NOT set .initializing here — that is exclusively done by switchTranscriptionEngine
+        // so background downloads (clicking Download in Settings) never show the overlay.
+        parakeet.$loadingProgress
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] progress in
+                guard let self else { return }
+                if progress == 0.0 && self.currentState == .initializing {
+                    self.currentState = .idle
+                }
+            }
+            .store(in: &parakeetCancellables)
     }
 
     /// Flash a "model still loading" message in the overlay for 3 seconds.
@@ -392,6 +428,23 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 Logger.shared.error("AppStateManager: macOS too old for apple-native. Falling back to WhisperKit.")
                 if let whisper = sharedWhisper { await router.setEngine(whisper) }
             }
+        } else if modelName.hasPrefix("parakeet-") {
+            // AC#5, AC#8: Route parakeet-v2 and parakeet-v3 to ParakeetService.
+            // WhisperService remains loaded; EngineRouter switches exclusively to Parakeet.
+            Logger.shared.info("AppStateManager: Dynamically routing to ParakeetService for model: \(modelName)")
+            if let parakeet = sharedParakeet {
+                // Only show the loading overlay if the model isn't already in memory.
+                // Must set currentState on MainActor: didSet → appStateDidChange → NSStatusBarButton.setImage
+                // all require the main thread, but switchTranscriptionEngine runs on a background thread.
+                if !parakeet.isReady {
+                    await MainActor.run { self.currentState = .initializing }
+                }
+                parakeet.changeModel(to: modelName)
+                await router.setEngine(parakeet)
+            } else {
+                Logger.shared.error("AppStateManager: sharedParakeet is nil — cannot route to Parakeet.")
+            }
+
         } else {
             Logger.shared.info("AppStateManager: Dynamically routing to shared WhisperService for model: \(modelName)")
             if let whisper = sharedWhisper {

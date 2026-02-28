@@ -34,6 +34,7 @@ enum SettingsTab: Hashable {
 
 struct SettingsView: View {
     @ObservedObject var whisper: WhisperService
+    @ObservedObject var parakeet: ParakeetService
     @ObservedObject var stateManager: AppStateManager
     var microphoneService: MicrophoneService
     @State private var settingsViewModel = SettingsViewModel()
@@ -60,7 +61,7 @@ struct SettingsView: View {
                 case .general:
                     GeneralSettingsView(whisper: whisper, stateManager: stateManager, microphoneService: microphoneService)
                 case .model:
-                    ModelSettingsView(whisper: whisper, stateManager: stateManager)
+                    ModelSettingsView(whisper: whisper, parakeet: parakeet, stateManager: stateManager)
                 case .postProcessing:
                     PostProcessingSettingsView(whisper: whisper, stateManager: stateManager, viewModel: settingsViewModel)
                 case .none:

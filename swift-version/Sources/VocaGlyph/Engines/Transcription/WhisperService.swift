@@ -231,10 +231,19 @@ class WhisperService: ObservableObject, @unchecked Sendable {
                 self.whisperKit = loadedKit
                 self.isReady = true
                 self.activeModel = modelName
-                UserDefaults.standard.set(modelName, forKey: "selectedModel")
+                // Only persist selectedModel if the user hasn't switched to a different engine
+                // (e.g. Parakeet) since this async load started. WhisperService loads in the
+                // background on every launch, and without this guard it would overwrite a
+                // Parakeet or apple-native selection made during or after startup.
+                let current = UserDefaults.standard.string(forKey: "selectedModel") ?? ""
+                let isStillWhisperModel = !current.hasPrefix("parakeet-") && current != "apple-native"
+                if isStillWhisperModel {
+                    UserDefaults.standard.set(modelName, forKey: "selectedModel")
+                }
                 self.loadingModel = nil
                 self.downloadState = "Ready"
             }
+
             
             delegate?.whisperServiceDidUpdateState("Ready")
         } catch {
