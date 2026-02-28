@@ -36,7 +36,7 @@ class OutputService: @unchecked Sendable {
             // Remove common conversational filler words.
             // (?i) makes it case-insensitive.
             // \b ensures we match whole words only (so we don't turn "plumber" into "plber" by removing "um").
-            // [\s,]* optionally matched trailing spaces and commas.
+            // [\s,]* optionally matches trailing spaces and commas.
             let pattern = "(?i)\\b(um|uh|ah|like|you know)\\b[\\s,]*"
             
             if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
@@ -47,6 +47,15 @@ class OutputService: @unchecked Sendable {
             // Clean up any double spaces introduced by replacement
             processedText = processedText.replacingOccurrences(of: "  ", with: " ")
             processedText = processedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Auto-punctuation: capitalize first letter and append a terminal period if absent.
+        // Whisper and Apple engines produce punctuated output natively; the guard on existing
+        // terminal punctuation makes this a safe no-op for those engines while fixing Parakeet,
+        // which returns raw unpunctuated text from FluidAudio.
+        let shouldAutoPunctuate = UserDefaults.standard.bool(forKey: "autoPunctuation")
+        if shouldAutoPunctuate {
+            processedText = applyBasicPunctuation(processedText)
         }
         
         if processedText.isEmpty { return }
@@ -73,6 +82,26 @@ class OutputService: @unchecked Sendable {
         }
     }
     
+    // MARK: - Text Processing Helpers
+
+    /// Capitalizes the first character and appends a period if no terminal punctuation exists.
+    /// Engine-safe: if the text already ends with `.`, `?`, or `!` (Whisper/Apple output),
+    /// this is a pure no-op — no double-punctuation occurs.
+    func applyBasicPunctuation(_ text: String) -> String {
+        var result = text
+        // Capitalize first letter
+        if let first = result.unicodeScalars.first,
+           CharacterSet.lowercaseLetters.contains(first) {
+            result = result.prefix(1).uppercased() + result.dropFirst()
+        }
+        // Append period only when no terminal punctuation is present
+        let terminators: Set<Character> = [".", "?", "!", ":", ";", ","]
+        if let last = result.last, !terminators.contains(last) {
+            result += "."
+        }
+        return result
+    }
+
     private func copyToPasteboard(text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

@@ -66,10 +66,14 @@ class ParakeetService: ObservableObject, @unchecked Sendable {
     init() {
         Logger.shared.info("ParakeetService: Initialized.")
         restoreDownloadedModelsFromDisk()
+        Task { await autoInitializeIfNeeded() }
     }
 
     /// Scans FluidAudio's cache directories on disk and pre-populates `downloadedModels`
     /// so the Settings UI shows the correct DOWNLOADED badge on every app launch.
+    /// Thread-safe: assigns synchronously when already on the main thread (init, deleteModel)
+    /// so that `autoInitializeIfNeeded()` sees the populated set immediately.
+    /// Dispatches asynchronously to the main thread only if called from a background context.
     private func restoreDownloadedModelsFromDisk() {
         var found: Set<String> = []
         for version in [ModelVersion.v3, ModelVersion.v2] {
@@ -82,16 +86,57 @@ class ParakeetService: ObservableObject, @unchecked Sendable {
                 Logger.shared.info("ParakeetService: Found cached model '\(version.modelId)' at \(dir.lastPathComponent)")
             }
         }
-        downloadedModels = found
+        // If we're already on the main thread (init, deleteModel @MainActor),
+        // assign synchronously so that autoInitializeIfNeeded() and any other
+        // code following this call sees the updated set immediately.
+        // Only dispatch async when called from a background context.
+        if Thread.isMainThread {
+            downloadedModels = found
+        } else {
+            DispatchQueue.main.async { self.downloadedModels = found }
+        }
     }
 
     // MARK: - Public API
+
+    /// Rescans FluidAudio's cache directories on disk and updates `downloadedModels`.
+    /// Mirrors `WhisperService.checkDownloadedModels()`. Called after `deleteModel(id:)`
+    /// to ensure the UI reflects the actual on-disk state.
+    func checkDownloadedModels() {
+        restoreDownloadedModelsFromDisk()
+    }
+
+    /// Auto-initializes the selected Parakeet model on launch if it is already on disk.
+    /// Called from `init()` — mirrors `WhisperService.autoInitialize()`.
+    /// NEVER triggers a network download: the guard checks `downloadedModels` (populated
+    /// by `restoreDownloadedModelsFromDisk()`) before calling `initialize()`.
+    private func autoInitializeIfNeeded() async {
+        let selected = UserDefaults.standard.string(forKey: "selectedModel") ?? ""
+        guard selected.hasPrefix("parakeet-"),
+              let version = ModelVersion(modelId: selected),
+              downloadedModels.contains(selected) else {
+            if selected.hasPrefix("parakeet-") && !downloadedModels.contains(selected) {
+                Logger.shared.info("ParakeetService: Selected parakeet model '\(selected)' not on disk — staying idle.")
+            }
+            return
+        }
+
+        Logger.shared.info("ParakeetService: Auto-initializing \(selected) on launch...")
+        await initialize(version: version)
+    }
 
     /// Downloads and loads the CoreML model for the given version into ANE memory.
     /// Updates @Published state on @MainActor throughout.
     /// - Parameter version: The Parakeet model version to load (.v2 or .v3)
     func initialize(version: ModelVersion) async {
         Logger.shared.info("ParakeetService: Beginning initialization for \(version.modelId)...")
+
+        // AC#4: Concurrent download guard — if another model is already downloading,
+        // ignore this call. If the same model is requested again, allow it (idempotent).
+        guard downloadingModelId == nil || downloadingModelId == version.modelId else {
+            Logger.shared.info("ParakeetService: Already loading \(downloadingModelId!) — ignoring \(version.modelId).")
+            return
+        }
 
         await MainActor.run {
             self.downloadState = "Downloading \(version.modelId)..."
@@ -261,6 +306,13 @@ class ParakeetService: ObservableObject, @unchecked Sendable {
                 downloadState = "Not Initialized"
                 loadingProgress = 0.0
             }
+            // AC#7: Clear stale loading indicators if the deleted model was mid-download.
+            if downloadingModelId == id {
+                downloadingModelId = nil
+                loadingProgress = 0.0
+            }
+            // AC#3: Resync downloadedModels from disk after delete (mirrors WhisperService.checkDownloadedModels()).
+            checkDownloadedModels()
         } catch {
             Logger.shared.error("ParakeetService: Failed to delete model '\(id)' — \(error.localizedDescription)")
         }
@@ -280,10 +332,54 @@ extension ParakeetService: TranscriptionEngine {
             )
         }
 
-        Logger.shared.info("ParakeetService: Starting transcription (model: \(activeModel), frames: \(audioBuffer.frameLength))")
-        let result = try await manager.transcribe(audioBuffer)
+        // AC#6: Extract samples for amplitude-based silence detection (mirrors WhisperService).
+        guard let channelData = audioBuffer.floatChannelData else {
+            throw NSError(
+                domain: "ParakeetError",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid audio buffer: no channel data"]
+            )
+        }
+        let frameLength = Int(audioBuffer.frameLength)
+        let samples = Array(UnsafeBufferPointer<Float>(start: channelData[0], count: frameLength))
+
+        guard let trimmedSamples = trimSilence(samples) else {
+            Logger.shared.info("ParakeetService: Audio is entirely silent — skipping ANE inference.")
+            return ""
+        }
+
+        let silencePct = Int((1.0 - Float(trimmedSamples.count) / Float(max(samples.count, 1))) * 100)
+        Logger.shared.info("ParakeetService: Trimmed \(silencePct)% silence. Frames: \(samples.count) → \(trimmedSamples.count)")
+
+        // Rebuild a trimmed AVAudioPCMBuffer for FluidAudio.
+        let format = audioBuffer.format
+        let trimmedBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(trimmedSamples.count))!
+        trimmedBuffer.frameLength = AVAudioFrameCount(trimmedSamples.count)
+        trimmedSamples.withUnsafeBufferPointer { ptr in
+            trimmedBuffer.floatChannelData![0].initialize(from: ptr.baseAddress!, count: trimmedSamples.count)
+        }
+
+        Logger.shared.info("ParakeetService: Starting transcription (model: \(activeModel), frames: \(trimmedBuffer.frameLength))")
+        let result = try await manager.transcribe(trimmedBuffer)
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         Logger.shared.info("ParakeetService: Transcription complete — '\(text)'")
         return text
+    }
+}
+
+// MARK: - Silence Trimming
+
+extension ParakeetService {
+    /// Removes leading and trailing silence from a raw PCM sample array.
+    /// Returns `nil` when the audio is entirely silent (all samples ≤ threshold),
+    /// allowing the caller to skip ANE inference instead of producing a hallucination.
+    /// Mirrors `WhisperService.trimSilence()` — identical logic, engine-agnostic.
+    func trimSilence(_ samples: [Float], threshold: Float = 0.01) -> [Float]? {
+        guard !samples.isEmpty else { return nil }
+        guard let first = samples.firstIndex(where: { abs($0) > threshold }),
+              let last  = samples.lastIndex(where:  { abs($0) > threshold }),
+              first < last
+        else { return nil }
+        return Array(samples[first...last])
     }
 }

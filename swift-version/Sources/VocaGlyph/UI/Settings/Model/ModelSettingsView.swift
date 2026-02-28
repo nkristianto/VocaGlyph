@@ -46,15 +46,15 @@ struct ModelSettingsView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             // ⚡ Speed-First (Parakeet) section — above Whisper models
-                            Label {
-                                Text("⚡ Speed-First (Parakeet)")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Theme.navy)
-                            } icon: {
-                                EmptyView()
-                            }
-                            .padding(.top, 4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // Label {
+                            //     Text("⚡ Speed-First (Parakeet)")
+                            //         .font(.system(size: 14, weight: .semibold))
+                            //         .foregroundStyle(Theme.navy)
+                            // } icon: {
+                            //     EmptyView()
+                            // }
+                            // .padding(.top, 4)
+                            // .frame(maxWidth: .infinity, alignment: .leading)
 
                             appleNativeCard
                             // Divider before Whisper section
@@ -227,11 +227,13 @@ struct ModelSettingsView: View {
             isSelected: focusedModel == id,
             isDownloaded: isAlreadyDownloaded,
             isActive: selectedModel == id && parakeet.activeModel == id,
-            // "Initializing..." spinner on the Use Model button (post-download ANE load phase)
-            isLoading: isDownloading && isAlreadyDownloaded,
-            // Show phased progress % (25%, 60%, 85%) from ParakeetService.loadingProgress
-            // so ModelCardView renders the animated arrow + percentage, identical to Whisper.
-            downloadProgress: isDownloading && !isAlreadyDownloaded ? Float(parakeet.loadingProgress) : nil,
+            // AC#9: Two-phase UI driven by loadingProgress thresholds defined in ParakeetService:
+            // - 0.0 – 0.64 (download phase): show animated % chip (same as Whisper downloadProgress)
+            // - 0.65 – 1.0 (ANE load phase): show "Initialising…" spinner on Use Model button
+            // - 0.0 and already downloaded: show "Use Model" button normally
+            isLoading: isDownloading && parakeet.loadingProgress >= 0.65,
+            downloadProgress: isDownloading && parakeet.loadingProgress < 0.65
+                ? Float(parakeet.loadingProgress) : nil,
             recommendationBadge: recommendationBadge,
             onSelect: { focusedModel = id },
             onUse: {

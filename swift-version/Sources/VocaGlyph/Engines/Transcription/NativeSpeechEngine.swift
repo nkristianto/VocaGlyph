@@ -178,8 +178,9 @@ public actor NativeSpeechEngine: TranscriptionEngine {
         request.taskHint = .dictation
 
         // addsPunctuation offloads punctuation insertion to the recognizer (macOS 13+,
-        // which is a strict subset of our macOS 15 minimum — always true).
-        request.addsPunctuation = true
+        // which is a strict subset of our macOS 15 minimum — always safe to set).
+        // Respect the user's autoPunctuation toggle from General Settings.
+        request.addsPunctuation = UserDefaults.standard.bool(forKey: "autoPunctuation")
 
         Logger.shared.info("NativeSpeechEngine: Awaiting SFSpeechRecognizer result…")
 

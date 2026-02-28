@@ -97,7 +97,9 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     /// Flash a "model still loading" message in the overlay for 3 seconds.
     /// Called by HotkeyService when the hotkey fires during .initializing state.
     func flashNotReadyMessage() {
-        notReadyMessage = "WhisperKit is still loading. Try again in a moment."
+        let selected = UserDefaults.standard.string(forKey: "selectedModel") ?? ""
+        let engineName = selected.hasPrefix("parakeet-") ? "Parakeet" : "WhisperKit"
+        notReadyMessage = "\(engineName) is still loading. Try again in a moment."
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             self?.notReadyMessage = nil
         }
@@ -439,7 +441,8 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
                 if !parakeet.isReady {
                     await MainActor.run { self.currentState = .initializing }
                 }
-                parakeet.changeModel(to: modelName)
+                // AC#5: Do NOT call parakeet.changeModel() here — the UI card's onUse handler
+                // already called it. This function only routes the engine, not loads a model.
                 await router.setEngine(parakeet)
             } else {
                 Logger.shared.error("AppStateManager: sharedParakeet is nil — cannot route to Parakeet.")
