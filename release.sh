@@ -53,6 +53,22 @@ echo "✅ DMG notarized and stapled: $DMG"
 mkdir -p "$RELEASES_DIR"
 cp "$DMG" "$RELEASES_DIR/"
 
+# ── Verify embedded app version matches the release version ──
+MOUNT_POINT=$(mktemp -d)
+hdiutil attach "$DMG" -mountpoint "$MOUNT_POINT" -quiet -nobrowse
+EMBEDDED_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" \
+  "$MOUNT_POINT/VocaGlyph.app/Contents/Info.plist" 2>/dev/null || echo "unknown")
+hdiutil detach "$MOUNT_POINT" -quiet
+rm -rf "$MOUNT_POINT"
+
+if [ "$EMBEDDED_VERSION" != "$VERSION" ]; then
+  echo "❌ Version mismatch! DMG contains app version '$EMBEDDED_VERSION' but expected '$VERSION'."
+  echo "   Please update CFBundleShortVersionString and CFBundleVersion in Xcode, rebuild, and retry."
+  rm -f "$RELEASES_DIR/$(basename "$DMG")"
+  exit 1
+fi
+echo "✅ Embedded app version verified: $EMBEDDED_VERSION"
+
 GENERATE_APPCAST=$(find ~/Library/Developer/Xcode/DerivedData \
   -name "generate_appcast" -not -path "*.dSYM*" 2>/dev/null | head -1)
 
