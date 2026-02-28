@@ -28,19 +28,8 @@ struct HistorySettingsView: View {
     }
 
     var groupedItems: [(String, [TranscriptionItem])] {
-        let calendar = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .none
-
         let groups = Dictionary(grouping: filteredItems) { item -> String in
-            if calendar.isDateInToday(item.timestamp) {
-                return "TODAY"
-            } else if calendar.isDateInYesterday(item.timestamp) {
-                return "YESTERDAY"
-            } else {
-                return formatter.string(from: item.timestamp).uppercased()
-            }
+            Self.sectionTitle(for: item.timestamp)
         }
 
         let sortedGroups = groups.sorted { (group1, group2) -> Bool in
@@ -52,6 +41,24 @@ struct HistorySettingsView: View {
         return sortedGroups
     }
 
+    /// Formats a date into the full section header label.
+    /// - Today: "TODAY — Sunday, 1 March 2026"
+    /// - Yesterday: "YESTERDAY — Sunday, 1 March 2026"
+    /// - Older: "Sunday, 1 March 2026"
+    static func sectionTitle(for date: Date) -> String {
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, d MMMM yyyy"
+
+        if cal.isDateInToday(date) {
+            return "TODAY — \(formatter.string(from: date))"
+        } else if cal.isDateInYesterday(date) {
+            return "YESTERDAY — \(formatter.string(from: date))"
+        } else {
+            return formatter.string(from: date)
+        }
+    }
+
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 32) {
@@ -61,9 +68,9 @@ struct HistorySettingsView: View {
                         Text("Transcription History")
                             .font(.system(size: 24, weight: .bold))
                             .foregroundStyle(Theme.navy)
-                        Text("Manage and review your recent dictations")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.textMuted)
+                        // Text("Manage and review your recent dictations")
+                        //     .font(.system(size: 14))
+                        //     .foregroundStyle(Theme.textMuted)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -72,14 +79,6 @@ struct HistorySettingsView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(isSearchExpanded ? Theme.navy : Theme.textMuted)
                             .font(.system(size: 13, weight: .medium))
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    isSearchExpanded = true
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    isSearchFocused = true
-                                }
-                            }
 
                         if isSearchExpanded {
                             TextField("Search...", text: $searchText)
@@ -92,7 +91,7 @@ struct HistorySettingsView: View {
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                                 .onChange(of: isSearchFocused) { _, focused in
                                     if !focused && searchText.isEmpty {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        withAnimation(.easeOut(duration: 1.0)) {
                                             isSearchExpanded = false
                                         }
                                     }
@@ -102,7 +101,7 @@ struct HistorySettingsView: View {
                                 Button(action: {
                                     searchText = ""
                                     isSearchFocused = false
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    withAnimation(.easeOut(duration: 1.0)) {
                                         isSearchExpanded = false
                                     }
                                 }) {
@@ -123,7 +122,15 @@ struct HistorySettingsView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isSearchExpanded ? Theme.navy.opacity(0.35) : Theme.textMuted.opacity(0.2), lineWidth: 1)
                     )
-                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSearchExpanded)
+                    .animation(.easeOut(duration: 0.15), value: isSearchExpanded)
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                    .onTapGesture {
+                        guard !isSearchExpanded else { return }
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isSearchExpanded = true
+                        }
+                        isSearchFocused = true
+                    }
 
                     // Clear all button — only visible when there are items
                     if !items.isEmpty {
@@ -166,45 +173,56 @@ struct HistorySettingsView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 20) {
                             ForEach(groupedItems, id: \.0) { group in
-                                VStack(alignment: .leading, spacing: 0) {
-                                    // Date Header
-                                    HStack {
-                                        Spacer()
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Date Header (outside the card)
+                                    HStack(spacing: 8) {
                                         Text(group.0)
                                             .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(Theme.textMuted)
+                                            .foregroundStyle(Theme.textMuted)
                                             .tracking(1.0)
-                                        Spacer()
+                                            .fixedSize(horizontal: true, vertical: false)
+                                        Rectangle()
+                                            .frame(height: 0.5)
+                                            .foregroundStyle(Theme.textMuted.opacity(0.4))
                                     }
-                                    .padding(.vertical, 12)
 
-                                    Divider().background(Theme.textMuted.opacity(0.1))
-
-                                    // Items
-                                    ForEach(group.1) { item in
-                                        HistoryRowView(
-                                            item: item,
-                                            isMenuOpen: activeMenu?.item.id == item.id,
-                                            onCopy: { copyToClipboard(text: item.text) },
-                                            onDelete: { deleteItem(item) },
-                                            onMenuToggle: { buttonFrame in
-                                                if activeMenu?.item.id == item.id {
-                                                    activeMenu = nil
-                                                } else {
-                                                    activeMenu = HistoryMenuState(item: item, buttonFrame: buttonFrame)
+                                    // White card wrapping the items
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        ForEach(group.1) { item in
+                                            HistoryRowView(
+                                                item: item,
+                                                isMenuOpen: activeMenu?.item.id == item.id,
+                                                onCopy: { copyToClipboard(text: item.text) },
+                                                onDelete: { deleteItem(item) },
+                                                onMenuToggle: { buttonFrame in
+                                                    if activeMenu?.item.id == item.id {
+                                                        activeMenu = nil
+                                                    } else {
+                                                        activeMenu = HistoryMenuState(item: item, buttonFrame: buttonFrame)
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
 
-                                        if item.id != group.1.last?.id {
-                                            Divider().background(Theme.textMuted.opacity(0.1))
-                                                .padding(.vertical, 8)
+                                            if item.id != group.1.last?.id {
+                                                Divider()
+                                                    .background(Theme.textMuted.opacity(0.1))
+                                                    .padding(.horizontal, 8)
+                                            }
                                         }
                                     }
+                                    .padding(.vertical, 4)
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Theme.textMuted.opacity(0.15), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
                                 }
                             }
                         }
-                        .padding(.horizontal, 40)
+                        .padding(.leading, 40)
+                        .padding(.trailing, 20)
                         .padding(.bottom, 40)
                     }
                 }
@@ -458,11 +476,14 @@ struct HistoryRowView: View {
                 .font(.system(size: 13))
                 .foregroundColor(Theme.textMuted)
                 .frame(width: 70, alignment: .leading)
+                .padding(.top, 4)
+                .padding(.leading, 16)
 
             Text(item.text)
                 .font(.system(size: 14))
                 .foregroundColor(Theme.navy)
                 .lineLimit(nil)
+                .padding(.top, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {

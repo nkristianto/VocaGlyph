@@ -14,7 +14,7 @@ struct GeneralSettingsView: View {
                 Text("General Settings")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Theme.navy)
-                Text("Configure voice input, system integration, and application behavior")
+                Text("Set up your microphone, shortcut, and system preferences")
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textMuted)
             }
@@ -28,9 +28,8 @@ struct GeneralSettingsView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 32) {
-                    InputConfigurationSection(microphoneService: microphoneService)
+                    RecordingSetupSection(microphoneService: microphoneService)
                     SystemIntegrationSection()
-                    WordReplacementSection()
                     DeveloperOptionsSection()
                 }
                 .padding(40)

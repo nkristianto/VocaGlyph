@@ -48,23 +48,22 @@ struct CustomSidebar: View {
                 SidebarItemView(title: "General", icon: "gearshape.fill", tab: .general, selectedTab: $selectedTab)
                 SidebarItemView(title: "History", icon: "clock.arrow.circlepath", tab: .history, selectedTab: $selectedTab)
                 SidebarItemView(title: "Model", icon: "brain.head.profile", tab: .model, selectedTab: $selectedTab)
-                SidebarItemView(title: "Post-Processing", icon: "wand.and.stars", tab: .postProcessing, selectedTab: $selectedTab, showExperimentalBadge: true)
+                SidebarItemView(title: "Writing Assistant", icon: "wand.and.stars", tab: .textProcessing, selectedTab: $selectedTab, showExperimentalBadge: false)
             }
             .padding(.horizontal, 6)
 
             Spacer()
 
-            // Footer
             VStack(alignment: .leading, spacing: 4) {
                 Text("Under Development")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.accent)
                 Text(appVersionString)
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
             }
-            .padding(.leading, 18)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
     }
 }

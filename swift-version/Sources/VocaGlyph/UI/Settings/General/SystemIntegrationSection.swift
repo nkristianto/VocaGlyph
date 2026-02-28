@@ -7,7 +7,7 @@ struct SystemIntegrationSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label {
-                Text("System Integration")
+                Text("App Behaviour")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(Theme.navy)
             } icon: {

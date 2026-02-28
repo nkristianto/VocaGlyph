@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Coordinator view for the Post-Processing settings tab.
+/// Coordinator view for the Writing Assistant settings tab.
 /// Owns the new-template overlay and template editor overlay state.
-struct PostProcessingSettingsView: View {
+/// Sections appear in order: AI Refinement → Basic Cleanup → Word Replacements.
+struct TextProcessingSettingsView: View {
     @ObservedObject var whisper: WhisperService
     @ObservedObject var stateManager: AppStateManager
     @ObservedObject var viewModel: SettingsViewModel
@@ -18,17 +19,12 @@ struct PostProcessingSettingsView: View {
     var body: some View {
         ZStack {
             VStack(alignment: .leading, spacing: 0) {
-                // Sticky Header
+                // Sticky Header — no experimental badge on title (AC #6)
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("Post-Processing Settings")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(Theme.navy)
-                        Text("experimental")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.orange.opacity(0.9))
-                    }
-                    Text("Configure AI refinement for your dictation")
+                    Text("Writing Assistant")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                    Text("AI refinement, cleanup rules, and word corrections for your dictations")
                         .font(.system(size: 14))
                         .foregroundStyle(Theme.textMuted)
                 }
@@ -42,6 +38,7 @@ struct PostProcessingSettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 32) {
+                        // 1. AI Refinement (experimental badge on section header, not page title)
                         TemplateAwareAISection(
                             stateManager: stateManager,
                             viewModel: viewModel,
@@ -57,6 +54,12 @@ struct PostProcessingSettingsView: View {
                                 }
                             }
                         )
+
+                        // 2. Basic Cleanup
+                        BasicCleanupSection()
+
+                        // 3. Word Replacements
+                        WordReplacementSection()
                     }
                     .padding(40)
                     .padding(.bottom, 20)
@@ -130,12 +133,18 @@ private struct TemplateAwareAISection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label {
-                Text("AI Post-Processing")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Theme.navy)
-            } icon: {
-                Image(systemName: "wand.and.stars").foregroundStyle(Theme.navy)
+            // Section header: "AI Refinement" with inline experimental badge (AC #6)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label {
+                    Text("AI Refinement")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Theme.navy)
+                } icon: {
+                    Image(systemName: "wand.and.stars").foregroundStyle(Theme.navy)
+                }
+                // Text("experimental")
+                //     .font(.system(size: 10, weight: .medium))
+                //     .foregroundStyle(Color.orange.opacity(0.9))
             }
 
             VStack(spacing: 0) {

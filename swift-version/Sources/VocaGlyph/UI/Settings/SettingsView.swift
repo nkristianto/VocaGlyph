@@ -27,7 +27,7 @@ enum SettingsTab: Hashable {
     case history
     case general
     case model
-    case postProcessing
+    case textProcessing
 }
 
 // MARK: - SettingsView
@@ -62,8 +62,8 @@ struct SettingsView: View {
                     GeneralSettingsView(whisper: whisper, stateManager: stateManager, microphoneService: microphoneService)
                 case .model:
                     ModelSettingsView(whisper: whisper, parakeet: parakeet, stateManager: stateManager)
-                case .postProcessing:
-                    PostProcessingSettingsView(whisper: whisper, stateManager: stateManager, viewModel: settingsViewModel)
+                case .textProcessing:
+                    TextProcessingSettingsView(whisper: whisper, stateManager: stateManager, viewModel: settingsViewModel)
                 case .none:
                     Text("Select an item").foregroundStyle(Theme.textMuted)
                 }

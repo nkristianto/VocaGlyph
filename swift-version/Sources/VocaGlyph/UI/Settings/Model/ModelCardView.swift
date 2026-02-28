@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// A card representing a single Whisper model: shows title, description, size badge,
-/// download/use/delete actions and progress tracking.
+/// A row representing a single transcription model inside a shared group card.
+///
+/// Layout (2-row):
+/// - Row 1: [selection circle]  [Model Name · size]  [speed badge]  [ACTIVE badge]
+/// - Row 2: [description (grows)] | [action buttons (trailing, only when not active)]
 struct ModelCardView: View {
     let title: String
     let description: String
@@ -12,105 +15,160 @@ struct ModelCardView: View {
     let isLoading: Bool
     let downloadProgress: Float?
     /// When true, shows an indeterminate spinner instead of the static Download button.
-    /// Use this for engines (e.g. FluidAudio/Parakeet) that don't expose granular progress.
     var isDownloadInProgress: Bool = false
-    /// Optional speed/recommendation badge text shown below the title row (e.g. "⚡ ~2× faster · English-optimised").
+    /// Optional speed/recommendation badge shown inline in the title row.
     var recommendationBadge: String? = nil
     let onSelect: () -> Void
     let onUse: () -> Void
     let onDownload: () -> Void
     let onDeleteRequest: (() -> Void)?
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
-                .font(.system(size: 16))
-                .padding(.top, 2)
+    /// The title with any trailing "(…)" removed, e.g. "Large v3 Turbo ⭐"
+    private var baseName: String {
+        title.replacingOccurrences(of: #"\s*\([^)]+\)"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
 
+    /// The text inside the first "(…)" in the title, e.g. "Multilingual"
+    private var bracketLabel: String? {
+        guard let start = title.firstIndex(of: "("),
+              let end   = title.firstIndex(of: ")"),
+              end > start else { return nil }
+        let inner = title[title.index(after: start)..<end]
+        return inner.isEmpty ? nil : String(inner)
+    }
+
+    @GestureState private var isPressed = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            // 4pt left accent bar for the active model
+            if isActive {
+                Rectangle()
+                    .frame(width: 4)
+                    .foregroundStyle(Theme.accent)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            // ── Left content: title + badges + description ────────────
             VStack(alignment: .leading, spacing: 6) {
-                headerRow
-                if let badge = recommendationBadge {
-                    speedBadgeView(badge)
+                // Row 1: selection circle + title + ACTIVE pill
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundStyle(isSelected ? Theme.navy : Theme.textMuted)
+                        .font(.system(size: 16))
+
+                    Text(baseName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(isActive ? Theme.accent : Theme.navy)
+
+                    Spacer()
+
+                    if isActive {
+                        activeBadge
+                    }
                 }
+
+                // Row 1.5: badge strip
+                HStack(spacing: 5) {
+                    // Bracket label chip e.g. "Multilingual", "English-only"
+                    if let label = bracketLabel {
+                        Text(label)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Theme.textMuted.opacity(0.08))
+                            .clipShape(.rect(cornerRadius: 4))
+                    }
+
+                    // Size chip
+                    if !size.isEmpty && size != "0 MB" {
+                        Label(size, systemImage: "internaldrive")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(Theme.textMuted)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Theme.textMuted.opacity(0.08))
+                            .clipShape(.rect(cornerRadius: 4))
+                    }
+
+                    // Speed / recommendation badge
+                    if let badge = recommendationBadge {
+                        speedBadgeView(badge)
+                    }
+                }
+                .padding(.leading, 24)
+
+                // Row 2: description only
                 Text(description)
-                    .font(.system(size: 12))
+                    .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
-                    .lineLimit(2)
-                actionRow
-                    .padding(.top, 4)
+                    .lineLimit(3)
+                    .padding(.leading, 24)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // ── Trailing: action buttons — vertically centered ────────
+            if !isActive {
+                actionButtons
+                    .padding(.trailing, 14)
             }
         }
-        .padding(16)
-        .background(isSelected ? Theme.navy.opacity(0.05) : Color.white)
-        .clipShape(.rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? Theme.navy : Theme.textMuted.opacity(0.2), lineWidth: 1)
-        )
+        .background(rowBackground)
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .updating($isPressed) { _, state, _ in state = true }
+        )
+        .scaleEffect(isPressed ? 0.97 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPressed)
     }
 
     // MARK: - Sub-views
 
-    @ViewBuilder
-    private var headerRow: some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(isActive ? Color.green : Theme.navy)
-            Spacer()
-            if isActive {
-                badge("ACTIVE", bg: Color.green, fg: .white)
-            } else if isDownloaded {
-                badge("DOWNLOADED", bg: Theme.accent.opacity(0.1), fg: Theme.accent)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.accent.opacity(0.2), lineWidth: 1))
-            }
-            Text(size)
-                .font(.system(size: 10, weight: .bold))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Theme.background)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.textMuted.opacity(0.1), lineWidth: 1))
-                .foregroundStyle(Theme.textMuted)
-                .clipShape(.rect(cornerRadius: 4))
-        }
+    /// Background colour for the full row, covering all states.
+    private var rowBackground: Color {
+        if isActive    { return Theme.accent.opacity(0.06) }
+        if isSelected  { return Theme.navy.opacity(0.04) }
+        if isPressed   { return Theme.navy.opacity(0.03) }
+        return Color.clear
     }
 
+    /// Green "ACTIVE" pill badge.
     @ViewBuilder
-    private func badge(_ label: String, bg: Color, fg: Color) -> some View {
-        Text(label)
+    private var activeBadge: some View {
+        Text("ACTIVE")
             .font(.system(size: 10, weight: .bold))
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(bg)
-            .foregroundStyle(fg)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background(Color.green.opacity(0.15))
+            .foregroundStyle(Color.green)
             .clipShape(.rect(cornerRadius: 4))
     }
 
     @ViewBuilder
     private func speedBadgeView(_ label: String) -> some View {
         Text(label)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 9, weight: .semibold))
             .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Theme.accent.opacity(0.1))
-            .clipShape(.rect(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.accent.opacity(0.25), lineWidth: 1))
+            .clipShape(.rect(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.accent.opacity(0.25), lineWidth: 1))
     }
 
+    /// Action buttons — shown in the trailing column of Row 2.
     @ViewBuilder
-    private var actionRow: some View {
+    private var actionButtons: some View {
         if isDownloadInProgress {
-            // Model is currently downloading — show indeterminate spinner (no granular progress).
             downloadInProgressView
         } else if !isDownloaded {
             downloadingOrDownloadButton
-        } else if !isActive {
+        } else {
             useAndDeleteButtons
         }
     }
 
-    /// Indeterminate spinner shown while FluidAudio/Parakeet is downloading.
     @ViewBuilder
     private var downloadInProgressView: some View {
         HStack(spacing: 6) {
@@ -151,59 +209,45 @@ struct ModelCardView: View {
                 Logger.shared.debug("Settings: Clicked Download for \(title)")
                 onDownload()
             }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down.circle")
-                    Text("Download")
-                }
-                .font(.system(size: 11, weight: .bold))
+                Label("Download", systemImage: "arrow.down.circle")
+                    .font(.system(size: 11, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
-            .padding(.vertical, 4).padding(.horizontal, 8)
-            .background(Theme.accent.opacity(0.1))
-            .clipShape(.rect(cornerRadius: 6))
+            .buttonStyle(.bordered)
+            .tint(Theme.accent)
         }
     }
 
     @ViewBuilder
     private var useAndDeleteButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button(action: {
                 Logger.shared.debug("Settings: Clicked Use Model for \(title)")
                 onUse()
             }) {
-                HStack(spacing: 4) {
-                    if isLoading {
-                        ProgressView().progressViewStyle(.circular).controlSize(.small).padding(.trailing, 2)
+                if isLoading {
+                    HStack(spacing: 4) {
+                        ProgressView().progressViewStyle(.circular).controlSize(.mini)
                         Text("Initializing...")
-                    } else {
-                        Image(systemName: "play.circle")
-                        Text("Use Model")
                     }
+                    .font(.system(size: 11, weight: .semibold))
+                } else {
+                    Text("Use Model")
+                        .font(.system(size: 11, weight: .semibold))
                 }
-                .font(.system(size: 11, weight: .bold))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
             .disabled(isLoading)
-            .foregroundStyle(isLoading ? Theme.textMuted : Theme.navy)
-            .padding(.vertical, 4).padding(.horizontal, 8)
-            .background((isLoading ? Theme.textMuted : Theme.navy).opacity(0.1))
-            .clipShape(.rect(cornerRadius: 6))
+            .tint(isLoading ? Theme.textMuted : Theme.navy)
 
             if let deleteRequestAction = onDeleteRequest {
                 Button(action: { deleteRequestAction() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "trash")
-                        Text("Delete")
-                    }
-                    .font(.system(size: 11, weight: .bold))
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .semibold))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
                 .disabled(isLoading)
-                .foregroundStyle(.red)
-                .padding(.vertical, 4).padding(.horizontal, 8)
-                .background(Color.red.opacity(0.1))
-                .clipShape(.rect(cornerRadius: 6))
+                .tint(Color.red)
+                .foregroundStyle(Color.red)
             }
         }
     }

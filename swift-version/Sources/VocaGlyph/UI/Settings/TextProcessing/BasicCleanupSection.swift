@@ -1,33 +1,40 @@
 import SwiftUI
 
-/// Developer Options section: debug logging toggle and log-file reveal button.
-struct DeveloperOptionsSection: View {
-    @AppStorage("enableDebugLogging") private var isDebugEnabled: Bool = false
+/// Basic Cleanup section: Auto-Punctuation and Remove Filler Words toggles.
+/// These are lightweight rules that always run, regardless of AI settings.
+struct BasicCleanupSection: View {
+    @AppStorage("autoPunctuation") private var autoPunctuation: Bool = true
+    @AppStorage("removeFillerWords") private var removeFillerWords: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 8) {
             Label {
-                Text("Developer Tools")
+                Text("Basic Cleanup")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(Theme.navy)
             } icon: {
-                Image(systemName: "hammer.fill")
+                Image(systemName: "scissors")
                     .foregroundStyle(Theme.navy)
             }
 
+            Text("Lightweight rules that always run, regardless of AI settings.")
+                .font(.system(size: 13))
+                .italic()
+                .foregroundStyle(Theme.textMuted)
+
             VStack(spacing: 0) {
-                // Enable Debug Logging
+                // Auto-Punctuation
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Debug Logging")
+                        Text("Auto-Punctuation")
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.navy)
-                        Text("Save internal operation logs to a local file for troubleshooting")
+                        Text("Automatically add commas, periods, and question marks")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textMuted)
                     }
                     Spacer()
-                    Toggle("", isOn: $isDebugEnabled.logged(name: "Debug Logging"))
+                    Toggle("", isOn: $autoPunctuation.logged(name: "Auto-Punctuation"))
                         .labelsHidden()
                         .toggleStyle(.switch)
                 }
@@ -37,28 +44,20 @@ struct DeveloperOptionsSection: View {
                     .background(Theme.textMuted.opacity(0.1))
                     .padding(.horizontal, 16)
 
-                // Reveal Log File
+                // Remove Filler Words
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Application Logs")
+                        Text("Remove Filler Words")
                             .fontWeight(.semibold)
                             .foregroundStyle(Theme.navy)
-                        Text("View the unified local log file")
+                        Text("Automatically strip conversational words (um, uh, like)")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textMuted)
                     }
                     Spacer()
-                    Button("Reveal in Finder") {
-                        Logger.shared.debug("Settings: Clicked Reveal in Finder")
-                        NSWorkspace.shared.selectFile(Logger.shared.getLogFileURL().path, inFileViewerRootedAtPath: "")
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.accent.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    Toggle("", isOn: $removeFillerWords.logged(name: "Remove Filler Words"))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                 }
                 .padding(16)
             }

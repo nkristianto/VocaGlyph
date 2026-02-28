@@ -2,12 +2,12 @@ import XCTest
 import SwiftData
 @testable import VocaGlyph
 
-// MARK: - PostProcessingSettingsViewTests
-// Tests the commitNewTemplate() logic extracted from PostProcessingSettingsView.
+// MARK: - TextProcessingSettingsViewTests
+// Tests the commitNewTemplate() logic in TextProcessingSettingsView.
 // We test the business-logic directly by reproducing the exact same produce in
 // an in-memory container — no SwiftUI hosting required.
 
-final class PostProcessingSettingsViewTests: XCTestCase {
+final class TextProcessingSettingsViewTests: XCTestCase {
 
     // MARK: - Helpers
 
@@ -17,7 +17,7 @@ final class PostProcessingSettingsViewTests: XCTestCase {
         return try ModelContainer(for: schema, configurations: config)
     }
 
-    /// Mimics PostProcessingSettingsView.commitNewTemplate(name:) without SwiftUI.
+    /// Mimics TextProcessingSettingsView.commitNewTemplate(name:) without SwiftUI.
     @MainActor
     private func commitNewTemplate(name: String, context: ModelContext,
                                     activeTemplateKey: String = TemplateSeederService.activeTemplateKey) -> PostProcessingTemplate {
