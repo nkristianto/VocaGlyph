@@ -12,16 +12,23 @@ extension UserDefaults {
     static let defaultShortcutModifiers: UInt64 = CGEventFlags([.maskControl, .maskShift]).rawValue
 }
 
+/// Sentinel key code indicating a modifier-only shortcut (no regular key required).
+let kModifierOnlyKeyCode: CGKeyCode = CGKeyCode.max
+
 // MARK: - Shortcut Display Helpers
 struct ShortcutDisplayHelper {
     /// Convert a CGKeyCode + CGEventFlags into a human-readable string like "⌃ ⇧ C"
     static func displayString(keyCode: CGKeyCode, flags: CGEventFlags) -> String {
         var parts: [String] = []
-        if flags.contains(.maskControl)  { parts.append("⌃") }
+        if flags.contains(.maskAlphaShift) { parts.append("⇪") } // CapsLock
+        if flags.contains(.maskControl)   { parts.append("⌃") }
         if flags.contains(.maskAlternate) { parts.append("⌥") }
-        if flags.contains(.maskShift)    { parts.append("⇧") }
-        if flags.contains(.maskCommand)  { parts.append("⌘") }
-        parts.append(keyName(for: keyCode))
+        if flags.contains(.maskShift)     { parts.append("⇧") }
+        if flags.contains(.maskCommand)   { parts.append("⌘") }
+        // For modifier-only shortcuts, don't append any key name.
+        if keyCode != kModifierOnlyKeyCode {
+            parts.append(keyName(for: keyCode))
+        }
         return parts.joined(separator: " ")
     }
 
@@ -150,7 +157,9 @@ class HotkeyService {
             Logger.shared.error("Accessibility permissions not granted. Hotkeys will not work until granted.")
         }
         
-        let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue)
+        let eventMask = (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
         
         // CFMachPortCallback that triggers when keys are pressed
         let callback: CGEventTapCallBack = { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
@@ -188,25 +197,58 @@ class HotkeyService {
         }
     }
     
+    // MARK: - Modifier mask helpers
+
+    /// The set of modifier masks that VocaGlyph tracks.
+    private let trackedMasks: [CGEventFlags] = [.maskAlphaShift, .maskControl, .maskShift, .maskCommand, .maskAlternate]
+
+    /// Returns true when `flags` contains exactly the modifiers in `targetFlags` (no more, no less).
+    private func exactModifierMatch(_ flags: CGEventFlags) -> Bool {
+        for mask in trackedMasks {
+            if targetFlags.contains(mask) != flags.contains(mask) { return false }
+        }
+        return true
+    }
+
+    // MARK: - Event handler
+
     private func handleEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
-        
-        // Match required masks completely (for keyDown only)
-        var matchesMask = true
-        if targetFlags.contains(.maskControl)  { matchesMask = matchesMask && flags.contains(.maskControl)  } else { matchesMask = matchesMask && !flags.contains(.maskControl) }
-        if targetFlags.contains(.maskShift)    { matchesMask = matchesMask && flags.contains(.maskShift)    } else { matchesMask = matchesMask && !flags.contains(.maskShift) }
-        if targetFlags.contains(.maskCommand)  { matchesMask = matchesMask && flags.contains(.maskCommand)  } else { matchesMask = matchesMask && !flags.contains(.maskCommand) }
-        if targetFlags.contains(.maskAlternate) { matchesMask = matchesMask && flags.contains(.maskAlternate) } else { matchesMask = matchesMask && !flags.contains(.maskAlternate) }
-        
+
+        // ── Modifier-only shortcut ───────────────────────────────────────────
+        if targetKeyCode == kModifierOnlyKeyCode, type == .flagsChanged {
+            let modifiersActive = exactModifierMatch(flags)
+
+            if modifiersActive {
+                // All required modifiers are now held → start (if not already).
+                let now = CFAbsoluteTimeGetCurrent()
+                let withinDebounce = (now - lastActivationTime) < debounceInterval
+
+                if stateManager.currentState == .initializing {
+                    DispatchQueue.main.async { self.stateManager.flashNotReadyMessage() }
+                } else if !isRecording && !withinDebounce {
+                    isRecording = true
+                    lastActivationTime = now
+                    DispatchQueue.main.async { self.stateManager.startRecording() }
+                }
+                return nil // consume
+            } else if isRecording {
+                // At least one required modifier was released → stop.
+                DispatchQueue.main.async { self.stateManager.stopRecording() }
+                return nil
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        // ── Regular (key + modifiers) shortcut ───────────────────────────────
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        let matchesMask = exactModifierMatch(flags)
+
         if keyCode == targetKeyCode {
             if type == .keyDown && matchesMask {
                 let now = CFAbsoluteTimeGetCurrent()
                 let withinDebounce = (now - lastActivationTime) < debounceInterval
 
-                // Block re-entry if already recording OR if within the debounce window.
-                // Also block (and flash a message) when the engine is still initialising:
-                // the recording would succeed but transcription would immediately fail.
                 if stateManager.currentState == .initializing {
                     DispatchQueue.main.async {
                         self.stateManager.flashNotReadyMessage()
@@ -235,7 +277,7 @@ class HotkeyService {
                 if matchesMask { return nil }
             }
         }
-        
+
         return Unmanaged.passUnretained(event)
     }
 }
