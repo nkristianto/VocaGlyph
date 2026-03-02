@@ -63,6 +63,9 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     private var updaterController: SPUStandardUpdaterController!
     private var checkForUpdatesViewModel: CheckForUpdatesViewModel!
     private var checkForUpdatesMenuItem: NSMenuItem!
+    /// One-shot observer token used to revert to .accessory policy after
+    /// Sparkle's update window is dismissed.
+    private var sparkleWindowCloseObserver: NSObjectProtocol?
 
     /// Bump this ONLY when shipping a breaking change that makes old versions
     /// incompatible (e.g. new model format, changed storage schema).
@@ -258,7 +261,33 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     
     /// Triggered by "Check for Updates…" in the status-bar menu.
     @objc private func checkForUpdates(_ sender: Any) {
+        // Bring VocaGlyph to the foreground so Sparkle's update window appears
+        // above all other applications. Without this, the .accessory activation
+        // policy keeps the Sparkle window behind whatever app is currently active.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
         updaterController.checkForUpdates(sender)
+
+        // One-shot observer: revert to .accessory once the Sparkle window closes
+        // (mirrors the pattern used by toggleSettingsWindow). Skip if Settings is
+        // still open — windowWillClose for Settings handles that case.
+        sparkleWindowCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            // Remove immediately — this is intentionally a one-shot observer.
+            if let token = self.sparkleWindowCloseObserver {
+                NotificationCenter.default.removeObserver(token)
+                self.sparkleWindowCloseObserver = nil
+            }
+            // Only revert to accessory if the Settings window is also not visible.
+            if !(self.settingsWindow?.isVisible ?? false) {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
 
     @objc func simulateRecording() {
