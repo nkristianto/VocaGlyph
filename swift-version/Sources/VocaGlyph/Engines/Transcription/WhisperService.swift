@@ -142,6 +142,16 @@ class WhisperService: ObservableObject, @unchecked Sendable {
             }
             return
         }
+        // Do not auto-load a Whisper model when the user has selected a Parakeet
+        // engine. EngineRouter will route to ParakeetService instead; loading Whisper
+        // here wastes ~2s of startup time and occupies ~500 MB of unified memory.
+        if defaultModelName.hasPrefix("parakeet-") {
+            DispatchQueue.main.async {
+                self.downloadState = "Standby"
+                self.isReady = false
+            }
+            return
+        }
         
         let available = getDownloadedModelsSync()
         if available.contains(defaultModelName) {

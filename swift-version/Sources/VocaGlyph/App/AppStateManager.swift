@@ -154,18 +154,19 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
         let initialModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
         Logger.shared.info("AppStateManager: startEngine called with model: \(initialModel)")
 
-        // AC #1: sequence the loads — Whisper first, then LLM.
+        // AC #1: sequence the engine loads — transcription engine first, then LLM warm-up.
         // switchTranscriptionEngine() returns quickly (it only calls router.setEngine).
-        // The actual WhisperKit model load happens asynchronously and signals completion
-        // by transitioning currentState from .initializing → .idle via the delegate.
-        // We poll currentState here (500ms interval, 60s max) so warmUpLocalLLMIfNeeded()
-        // never fires while Whisper is still occupying memory bandwidth.
+        // The actual model load happens asynchronously and signals completion by transitioning
+        // currentState from .initializing → .idle (via WhisperService delegate or
+        // Parakeet's bindParakeetProgress sink). We poll here so warmUpLocalLLMIfNeeded()
+        // never fires while the transcription engine is still occupying memory bandwidth.
         Task {
             await switchTranscriptionEngine(toModel: initialModel)
 
-            // Wait for Whisper to finish loading. State goes: .idle → .initializing → .idle.
-            // The first transition to .initializing happens inside WhisperService start;
-            // we need the return to .idle (= "Ready" delegate callback from WhisperKit).
+            // Wait for the active transcription engine to finish loading.
+            // State goes: .idle → .initializing → .idle.
+            // Applies to both WhisperService (driven by delegate) and
+            // ParakeetService (driven by bindParakeetProgress loadingProgress sink).
             let maxIterations = 120  // 120 × 0.5s = 60s max wait
             var iterations = 0
             // Give the state machine a moment to enter .initializing before we start polling.
@@ -177,10 +178,10 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
 
             let elapsedSeconds = Double(iterations + 1) * 0.5
             if currentState == .idle {
-                Logger.shared.info("AppStateManager: Whisper ready after ~\(String(format: "%.1f", elapsedSeconds))s — starting LLM warm-up now.")
+                Logger.shared.info("AppStateManager: Engine '\(initialModel)' ready after ~\(String(format: "%.1f", elapsedSeconds))s — starting LLM warm-up now.")
                 warmUpLocalLLMIfNeeded()
             } else {
-                Logger.shared.info("AppStateManager: Whisper not idle after \(Int(elapsedSeconds))s (state: \(currentState)) — skipping LLM warm-up.")
+                Logger.shared.info("AppStateManager: Engine '\(initialModel)' not idle after \(Int(elapsedSeconds))s (state: \(currentState)) — skipping LLM warm-up.")
             }
         }
 
