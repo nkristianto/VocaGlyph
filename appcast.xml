@@ -11,7 +11,7 @@
             <sparkle:version>103</sparkle:version>
             <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.0/VocaGlyph-0.3.0.dmg" length="20601974" type="application/octet-stream" sparkle:edSignature="zD6liNTrtHwZkycGK7AWZHStmhkjxGYIuwoIk5wsiHMVOUNdPnyXTOhSkV6IzJwN0cCJIKwnJzqtjfGOOTxZDA=="/>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.0/VocaGlyph-0.3.0.dmg" length="20600662" type="application/octet-stream" sparkle:edSignature="iuEhFREiwfmib7g+o9+Eey0eCNArL+Rw3rf1h09KY79/DWuHlmQlu/3zzrw+sprNP1usxyqrhH8df7MopAk7Cg=="/>
         </item>
         <item>
             <title>0.2.0</title>
