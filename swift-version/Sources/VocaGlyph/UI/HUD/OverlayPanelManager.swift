@@ -46,14 +46,12 @@ class OverlayPanelManager: ObservableObject {
     
     func updateVisibility(for state: AppState) {
         guard let panel = panel else { return }
-        Logger.shared.info("[OVERLAY-DBG] updateVisibility(for: .\(state)) called — displayState=.\(displayState)")
         
         if state == .idle {
             // Immediately animate displayState to .idle so the SwiftUI transition
             // (fade + scale defined on the view) plays right now — the spinner
             // disappears the instant transcription finishes, which is right before
             // the text is pasted into the focused app.
-            Logger.shared.info("[OVERLAY-DBG] Setting displayState → .idle (animated)")
             withAnimation(.easeOut(duration: 0.2)) {
                 displayState = .idle
             }
@@ -66,14 +64,12 @@ class OverlayPanelManager: ObservableObject {
                 // that has already been re-shown for a new recording session.
                 if let hc = panel.contentViewController as? NSHostingController<RecordingOverlayView>,
                    hc.rootView.stateManager.currentState == .idle {
-                    Logger.shared.info("[OVERLAY-DBG] Panel orderOut (state still .idle after 0.25s)")
                     panel.orderOut(nil)
                 }
             }
         } else {
             // For .recording, .processing, and .initializing: show the correct
             // content immediately (no animation delay on appearance).
-            Logger.shared.info("[OVERLAY-DBG] Setting displayState → .\(state)")
             displayState = state
 
             if !panel.isVisible {
@@ -94,7 +90,6 @@ class OverlayPanelManager: ObservableObject {
                     
                     panel.setFrameOrigin(NSPoint(x: x, y: y))
                 }
-                Logger.shared.info("[OVERLAY-DBG] Panel orderFrontRegardless")
                 panel.orderFrontRegardless()
             }
         }

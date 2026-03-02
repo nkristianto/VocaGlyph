@@ -300,7 +300,6 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     
     func startRecording() {
         guard currentState == .idle else {
-            Logger.shared.info("[OVERLAY-DBG] startRecording() ignored — already in .\(currentState) state")
             return
         }
         currentState = .recording
@@ -311,7 +310,6 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
             // This can happen when modifier-only hotkeys emit multiple flagsChanged events
             // on key release (one per modifier key). The guard prevents the second event
             // from triggering a second doStop() → nil buffer → setIdle() race.
-            Logger.shared.info("[OVERLAY-DBG] stopRecording() ignored — already in .\(currentState) state (duplicate modifier-key release event)")
             return
         }
         currentState = .processing
@@ -319,7 +317,6 @@ class AppStateManager: ObservableObject, @unchecked Sendable {
     
     func setIdle() {
         guard currentState != .idle else {
-            Logger.shared.info("[OVERLAY-DBG] setIdle() ignored — already .idle")
             return
         }
         currentState = .idle

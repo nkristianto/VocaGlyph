@@ -410,9 +410,7 @@ extension AppDelegate: AudioRecorderConfigChangeDelegate {
         // AVAudioEngineConfigurationChange notification that lands here.
         // Calling setIdle() in that case would abort the transcription Task mid-flight.
         let currentState = stateManager.currentState
-        Logger.shared.info("[OVERLAY-DBG] audioRecorderDidLoseConfiguration fired — currentState=.\(currentState)")
         guard currentState == .recording else {
-            Logger.shared.info("[OVERLAY-DBG] Ignoring config-change notification (state is not .recording — audio engine stop was intentional).")
             return
         }
         Logger.shared.info("AppDelegate: Audio engine lost configuration mid-recording — resetting to idle.")
@@ -563,7 +561,6 @@ extension AppDelegate: AppStateManagerDelegate {
 
 extension AppDelegate: WhisperServiceDelegate {
     func whisperServiceDidUpdateState(_ state: String) {
-        Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState('\(state)') — currentState=.\(stateManager.currentState)")
         
         DispatchQueue.main.async {
             switch state {
@@ -573,14 +570,11 @@ extension AppDelegate: WhisperServiceDelegate {
                 // .recording/.processing → .initializing here would interrupt the
                 // active session and cause the processing overlay to flash away.
                 if self.stateManager.currentState == .idle {
-                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState → setInitializing()")
                     self.stateManager.setInitializing()
                 } else {
-                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState SKIPPED setInitializing (currentState=.\(self.stateManager.currentState))")
                 }
             case "Ready", "Model not downloaded.", "Failed", "Model warming up...":
                 if self.stateManager.currentState == .initializing {
-                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState → setIdle()")
                     self.stateManager.setIdle()
                 }
             default:
