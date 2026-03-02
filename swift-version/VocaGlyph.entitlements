@@ -16,12 +16,5 @@
 	<key>com.apple.security.network.client</key>
 	<true/>
 
-	<!-- Temporary exception: allow CGEvent tap for hotkeys and paste.
-	     Accessibility permission (granted by user via System Settings) enables this. -->
-	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-	<array>
-		<string>com.vocaglyph.app-spks</string>
-		<string>com.vocaglyph.app-spki</string>
-	</array>
 </dict>
 </plist>

@@ -69,6 +69,7 @@
 				5E598C4A2F4DE0160023136C /* Frameworks */,
 				5E598C4B2F4DE0160023136C /* Resources */,
 				5E598C672F4DE9090023136C /* Attach metalib */,
+				5E8F35342F54C0E100F1624D /* Re-sign Sparkle Helpers  */,
 				5E8F35152F501F9B00F1624D /* Set Build Number From Git */,
 			);
 			buildRules = (
@@ -158,7 +159,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Compile MLX Metal shaders from Xcode-managed SPM checkouts\n# Xcode resolves SPM packages into SourcePackages/checkouts/ inside DerivedData\n# SRCROOT = xcode-project/VocaGlyph, so ../../swift-version = voice-to-text/swift-version\n\n# Find mlx-swift in Xcode's SourcePackages (where Xcode puts SPM checkouts).\n# BUILD_DIR = .../DerivedData/<Project>/Build/Products\n# Two dirname calls go up to .../DerivedData/<Project>/ where SourcePackages lives.\nDERIVED_DATA_PROJECT_DIR=$(dirname \"$(dirname \"${BUILD_DIR}\")\")\nMLX_SWIFT_CHECKOUT=\"${DERIVED_DATA_PROJECT_DIR}/SourcePackages/checkouts/mlx-swift\"\nMLX_METAL_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx/mlx-generated/metal\"\nMLX_INCLUDE_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx\"\nMLX_AIR_DIR=\"${DERIVED_FILE_DIR}/mlx-air\"\nMLX_OUT=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/mlx.metallib\"\n\nif [ ! -d \"${MLX_METAL_DIR}\" ]; then\n  echo \"warning: MLX Metal shaders not found at ${MLX_METAL_DIR} — skipping metallib build\"\n  exit 0\nfi\n\nmkdir -p \"${MLX_AIR_DIR}\"\n\nfor f in \"${MLX_METAL_DIR}\"/*.metal; do\n  name=$(basename \"$f\" .metal)\n  xcrun metal -std=metal3.1 -O2 -I \"${MLX_INCLUDE_DIR}\" -c \"$f\" -o \"${MLX_AIR_DIR}/${name}.air\"\ndone\n\nxcrun metallib \"${MLX_AIR_DIR}\"/*.air -o \"${MLX_OUT}\"\n\n# Sign the metallib with the same identity Xcode uses for the app.\n# Without this, codesign rejects the app bundle because it contains\n# an unsigned binary subcomponent.\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ] && [ \"${CODE_SIGNING_REQUIRED}\" != \"NO\" ]; then\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${MLX_OUT}\"\n  echo \"MLX metallib signed with: ${EXPANDED_CODE_SIGN_IDENTITY}\"\nfi\n\necho \"MLX metallib built: ${MLX_OUT}\"\n";
+			shellScript = "# Compile MLX Metal shaders from Xcode-managed SPM checkouts\n# Xcode resolves SPM packages into SourcePackages/checkouts/ inside DerivedData.\n#\n# BUILD_DIR depth varies by build type:\n#   Normal build  : .../DerivedData/<P>/Build/Products  (2 levels up)\n#   Archive build : .../DerivedData/<P>/Build/Intermediates.noindex/ArchiveIntermediates/<T>/BuildProductsPath  (5+ levels up)\n#\n# Fix: walk up from BUILD_DIR until we find a directory containing SourcePackages.\n\nDIR=\"${BUILD_DIR}\"\nwhile [ \"${DIR}\" != \"/\" ]; do\n  if [ -d \"${DIR}/SourcePackages\" ]; then\n    DERIVED_DATA_PROJECT_DIR=\"${DIR}\"\n    break\n  fi\n  DIR=$(dirname \"${DIR}\")\ndone\n\nif [ -z \"${DERIVED_DATA_PROJECT_DIR}\" ]; then\n  echo \"warning: Could not locate SourcePackages directory walking up from ${BUILD_DIR} — skipping metallib build\"\n  exit 0\nfi\n\nMLX_SWIFT_CHECKOUT=\"${DERIVED_DATA_PROJECT_DIR}/SourcePackages/checkouts/mlx-swift\"\nMLX_METAL_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx/mlx-generated/metal\"\nMLX_INCLUDE_DIR=\"${MLX_SWIFT_CHECKOUT}/Source/Cmlx\"\nMLX_AIR_DIR=\"${DERIVED_FILE_DIR}/mlx-air\"\nMLX_OUT=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/MacOS/mlx.metallib\"\n\nif [ ! -d \"${MLX_METAL_DIR}\" ]; then\n  echo \"warning: MLX Metal shaders not found at ${MLX_METAL_DIR} — skipping metallib build\"\n  exit 0\nfi\n\nmkdir -p \"${MLX_AIR_DIR}\"\n\nfor f in \"${MLX_METAL_DIR}\"/*.metal; do\n  name=$(basename \"$f\" .metal)\n  xcrun metal -std=metal3.1 -O2 -I \"${MLX_INCLUDE_DIR}\" -c \"$f\" -o \"${MLX_AIR_DIR}/${name}.air\"\ndone\n\nxcrun metallib \"${MLX_AIR_DIR}\"/*.air -o \"${MLX_OUT}\"\n\n# Sign the metallib with the same identity Xcode uses for the app.\n# Without this, codesign rejects the app bundle because it contains\n# an unsigned binary subcomponent.\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY}\" ] && [ \"${CODE_SIGNING_REQUIRED}\" != \"NO\" ]; then\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime \"${MLX_OUT}\"\n  echo \"MLX metallib signed with: ${EXPANDED_CODE_SIGN_IDENTITY}\"\nfi\n\necho \"MLX metallib built: ${MLX_OUT}\"\n";
 		};
 		5E8F35152F501F9B00F1624D /* Set Build Number From Git */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -178,6 +179,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "BUILD_NUMBER=$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || echo \"1\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\necho \"Setting CFBundleVersion=$BUILD_NUMBER in $PLIST\"\nif [ -f \"$PLIST\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $BUILD_NUMBER\" \"$PLIST\"\n  echo \"✅ Build number set to $BUILD_NUMBER\"\nelse\n  echo \"error: Info.plist not found at $PLIST\"\n  exit 1\nfi\n";
+		};
+		5E8F35342F54C0E100F1624D /* Re-sign Sparkle Helpers  */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Re-sign Sparkle Helpers ";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Re-sign Sparkle helpers AFTER they are embedded by Xcode.\n# This runs as a build phase (after Frameworks), so EXPANDED_CODE_SIGN_IDENTITY\n# is available and Xcode's keychain is already unlocked — no prompts.\n# Xcode's own codesign step runs AFTER all build phases and will NOT re-sign\n# already-signed nested bundles, so these entitlements will be preserved.\n\n# Only re-sign when CODE_SIGNING_REQUIRED is set (skip simulator builds).\nif [ \"${CODE_SIGNING_REQUIRED}\" != \"YES\" ]; then\n  echo \"Code signing not required — skipping Sparkle re-sign\"\n  exit 0\nfi\n\nif [ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n  echo \"EXPANDED_CODE_SIGN_IDENTITY not set — skipping Sparkle re-sign\"\n  exit 0\nfi\n\nSPARKLE_FW=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Frameworks/Sparkle.framework/Versions/B\"\n\nif [ ! -d \"${SPARKLE_FW}\" ]; then\n  echo \"Sparkle.framework not found — skipping\"\n  exit 0\nfi\n\n# Walk up from BUILD_DIR to find SourcePackages.\nDIR=\"${BUILD_DIR}\"\nwhile [ \"${DIR}\" != \"/\" ]; do\n  if [ -d \"${DIR}/SourcePackages\" ]; then\n    DERIVED_DATA_DIR=\"${DIR}\"\n    break\n  fi\n  DIR=$(dirname \"${DIR}\")\ndone\n\nDOWNLOADER_ENT=\"${DERIVED_DATA_DIR}/SourcePackages/checkouts/Sparkle/Downloader/Downloader.entitlements\"\n\n# Minimal sandbox entitlement (for Autoupdate, Updater, Installer)\nSANDBOX_ENT=$(mktemp /tmp/sparkle-sandbox.XXXXXX.plist)\ncat > \"${SANDBOX_ENT}\" << 'ENTEOF'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n  <key>com.apple.security.app-sandbox</key><true/>\n</dict></plist>\nENTEOF\n\n# Downloader also needs network client access\nif [ ! -f \"${DOWNLOADER_ENT}\" ]; then\n  DOWNLOADER_ENT=$(mktemp /tmp/sparkle-downloader.XXXXXX.plist)\n  cat > \"${DOWNLOADER_ENT}\" << 'ENTEOF'\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n  <key>com.apple.security.app-sandbox</key><true/>\n  <key>com.apple.security.network.client</key><true/>\n</dict></plist>\nENTEOF\nfi\n\nsign() {\n  local binary=\"$1\"\n  local ent=\"$2\"\n  if [ -e \"${binary}\" ]; then\n    codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime --entitlements \"${ent}\" \"${binary}\"\n    echo \"Re-signed: ${binary}\"\n  else\n    echo \"Skipped (not found): ${binary}\"\n  fi\n}\n\necho \"Re-signing Sparkle helpers with: ${EXPANDED_CODE_SIGN_IDENTITY}\"\nsign \"${SPARKLE_FW}/Autoupdate\"                        \"${SANDBOX_ENT}\"\nsign \"${SPARKLE_FW}/Updater.app\"                       \"${SANDBOX_ENT}\"\nsign \"${SPARKLE_FW}/XPCServices/Downloader.xpc\"        \"${DOWNLOADER_ENT}\"\nsign \"${SPARKLE_FW}/XPCServices/Installer.xpc\"         \"${SANDBOX_ENT}\"\n\nrm -f \"${SANDBOX_ENT}\"\necho \"Sparkle helpers re-signed successfully.\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -228,6 +248,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 3C269K7QLF;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -295,6 +316,7 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3C269K7QLF;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -324,12 +346,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
-				CODE_SIGN_ENTITLEMENTS = "../../swift-version/VocaGlyph.entitlements";
+				CODE_SIGN_ENTITLEMENTS = VocaGlyph/VocaGlyph.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 3C269K7QLF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -363,14 +384,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = NO;
-				CODE_SIGN_ENTITLEMENTS = "../../swift-version/VocaGlyph.entitlements";
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
+				CODE_SIGN_ENTITLEMENTS = VocaGlyph/VocaGlyph.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 3C269K7QLF;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
