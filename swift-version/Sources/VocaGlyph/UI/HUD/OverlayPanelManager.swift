@@ -1,11 +1,26 @@
 import Cocoa
 import SwiftUI
 
-class OverlayPanelManager {
+class OverlayPanelManager: ObservableObject {
     static let shared = OverlayPanelManager()
-    
+
     private var panel: NSPanel?
-    
+
+    /// The state the overlay UI should *display*.
+    ///
+    /// For non-idle transitions this updates immediately so the correct content
+    /// (waveform, spinner, gear) is shown right away.
+    ///
+    /// For the `.idle` transition this is also updated immediately — but wrapped
+    /// in `withAnimation` so SwiftUI plays the view's `.transition` (fade + scale).
+    /// The NSPanel itself is kept open for an extra 0.25 s to let that animation
+    /// complete before `orderOut` hides the window.
+    ///
+    /// This means the spinner disappears exactly when `setIdle()` fires (right
+    /// after transcription finishes, right before the text is pasted), rather
+    /// than lingering with an arbitrary fixed delay.
+    @Published var displayState: AppState = .idle
+
     func setupPanel(with stateManager: AppStateManager) {
         let overlayView = RecordingOverlayView(stateManager: stateManager)
         let hostingController = NSHostingController(rootView: overlayView)
@@ -25,28 +40,42 @@ class OverlayPanelManager {
         panel.hasShadow = false
         panel.contentViewController = hostingController
         
-        
         // We will position the panel dynamically in updateVisibility(for:)
-        
         self.panel = panel
     }
     
     func updateVisibility(for state: AppState) {
         guard let panel = panel else { return }
+        Logger.shared.info("[OVERLAY-DBG] updateVisibility(for: .\(state)) called — displayState=.\(displayState)")
         
         if state == .idle {
-            // Add a slight delay before closing to allow processing text to finish reading
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                // Ensure state is still idle before closing
-                if let _ = panel.contentViewController?.view,
-                   let hc = panel.contentViewController as? NSHostingController<RecordingOverlayView> {
-                    if hc.rootView.stateManager.currentState == .idle {
-                        panel.orderOut(nil)
-                    }
+            // Immediately animate displayState to .idle so the SwiftUI transition
+            // (fade + scale defined on the view) plays right now — the spinner
+            // disappears the instant transcription finishes, which is right before
+            // the text is pasted into the focused app.
+            Logger.shared.info("[OVERLAY-DBG] Setting displayState → .idle (animated)")
+            withAnimation(.easeOut(duration: 0.2)) {
+                displayState = .idle
+            }
+            // Keep the panel window open long enough for the transition to finish,
+            // then close it.  0.25 s > the 0.2 s animation so the window never
+            // disappears before the animation completes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak panel] in
+                guard let self, let panel else { return }
+                // Guard: only close if state is still idle to avoid closing a panel
+                // that has already been re-shown for a new recording session.
+                if let hc = panel.contentViewController as? NSHostingController<RecordingOverlayView>,
+                   hc.rootView.stateManager.currentState == .idle {
+                    Logger.shared.info("[OVERLAY-DBG] Panel orderOut (state still .idle after 0.25s)")
+                    panel.orderOut(nil)
                 }
             }
         } else {
-            // For .recording, .processing, and .initializing, show the panel
+            // For .recording, .processing, and .initializing: show the correct
+            // content immediately (no animation delay on appearance).
+            Logger.shared.info("[OVERLAY-DBG] Setting displayState → .\(state)")
+            displayState = state
+
             if !panel.isVisible {
                 // Determine the screen where the mouse currently is, or fallback to main
                 let mouseLocation = NSEvent.mouseLocation
@@ -65,7 +94,7 @@ class OverlayPanelManager {
                     
                     panel.setFrameOrigin(NSPoint(x: x, y: y))
                 }
-                
+                Logger.shared.info("[OVERLAY-DBG] Panel orderFrontRegardless")
                 panel.orderFrontRegardless()
             }
         }

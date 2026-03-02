@@ -374,9 +374,18 @@ extension AppDelegate: NSWindowDelegate {
 
 extension AppDelegate: AudioRecorderConfigChangeDelegate {
     func audioRecorderDidLoseConfiguration(_ recorder: AudioRecorderService) {
-        // Already called on main thread from the handler's DispatchQueue.main.async.
-        guard stateManager.currentState == .recording ||
-              stateManager.currentState == .processing else { return }
+        // Only reset state when we are actively *recording* — not when .processing.
+        //
+        // When state is .processing, stopRecording() has already intentionally called
+        // engine.stop() + removeTap(), which can itself trigger the
+        // AVAudioEngineConfigurationChange notification that lands here.
+        // Calling setIdle() in that case would abort the transcription Task mid-flight.
+        let currentState = stateManager.currentState
+        Logger.shared.info("[OVERLAY-DBG] audioRecorderDidLoseConfiguration fired — currentState=.\(currentState)")
+        guard currentState == .recording else {
+            Logger.shared.info("[OVERLAY-DBG] Ignoring config-change notification (state is not .recording — audio engine stop was intentional).")
+            return
+        }
         Logger.shared.info("AppDelegate: Audio engine lost configuration mid-recording — resetting to idle.")
         stateManager.setIdle()
     }
@@ -525,17 +534,24 @@ extension AppDelegate: AppStateManagerDelegate {
 
 extension AppDelegate: WhisperServiceDelegate {
     func whisperServiceDidUpdateState(_ state: String) {
-        // e.g., "Ready" vs "Failed" to update UI visually later
-        print("WhisperService state update: \(state)")
+        Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState('\(state)') — currentState=.\(stateManager.currentState)")
         
         DispatchQueue.main.async {
             switch state {
             case "Initializing Engine...", "Loading into memory...", "Warming up Neural Engine...", "Processing":
-                if self.stateManager.currentState != .initializing {
+                // Only show the loading overlay when the app is not already handling
+                // an active recording or transcription session. Transitioning from
+                // .recording/.processing → .initializing here would interrupt the
+                // active session and cause the processing overlay to flash away.
+                if self.stateManager.currentState == .idle {
+                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState → setInitializing()")
                     self.stateManager.setInitializing()
+                } else {
+                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState SKIPPED setInitializing (currentState=.\(self.stateManager.currentState))")
                 }
             case "Ready", "Model not downloaded.", "Failed", "Model warming up...":
                 if self.stateManager.currentState == .initializing {
+                    Logger.shared.info("[OVERLAY-DBG] whisperServiceDidUpdateState → setIdle()")
                     self.stateManager.setIdle()
                 }
             default:

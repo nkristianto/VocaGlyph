@@ -3,6 +3,11 @@ import SwiftUI
 struct RecordingOverlayView: View {
     @ObservedObject var stateManager: AppStateManager
 
+    // Observe the panel manager's display state so content remains visible
+    // during the panel's 0.5 s dismissal delay — prevents the spinner from
+    // vanishing the instant AppStateManager transitions to .idle.
+    @ObservedObject private var panelManager = OverlayPanelManager.shared
+
     // Animation states
     @State private var isPulsing = false
     @State private var initializingRotation: Double = 0
@@ -14,12 +19,18 @@ struct RecordingOverlayView: View {
             ? stateManager.parakeetLoadingProgress
             : stateManager.whisperLoadingProgress
 
+        // Use displayState (from OverlayPanelManager) rather than stateManager.currentState
+        // for show/hide decisions. When the app transitions to .idle, OverlayPanelManager
+        // wraps the displayState change in withAnimation(.easeOut(0.2s)), so the spinner
+        // fades out precisely when transcription finishes — right before the text is pasted.
+        let displayState = panelManager.displayState
+
         Group {
-            if stateManager.currentState == .recording || stateManager.currentState == .processing || stateManager.currentState == .initializing || stateManager.notReadyMessage != nil {
+            if displayState == .recording || displayState == .processing || displayState == .initializing || stateManager.notReadyMessage != nil {
                 ZStack {
                     // ── Main pill content ────────────────────────────────────
                     HStack(spacing: 12) {
-                        if stateManager.currentState == .initializing {
+                        if displayState == .initializing {
                             // Spinning gear + progress row
                             VStack(spacing: 6) {
                                 HStack(spacing: 8) {
@@ -74,9 +85,9 @@ struct RecordingOverlayView: View {
                             }
                             .padding(.vertical, 4)
 
-                        } else if stateManager.currentState == .recording {
+                        } else if displayState == .recording {
                             WaveformView()
-                        } else if stateManager.currentState == .processing {
+                        } else if displayState == .processing {
                             WaveformView()
 
                             Image(systemName: "arrow.triangle.2.circlepath")
@@ -93,7 +104,7 @@ struct RecordingOverlayView: View {
                     }
                     .padding(.horizontal, 32)
                     .padding(.vertical, 14)
-                    .frame(width: 230, height: stateManager.currentState == .initializing ? 72 : 48)
+                    .frame(width: 230, height: displayState == .initializing ? 72 : 48)
 
                     // ── "Not ready" banner (overlaid at top of pill) ─────────
                     if let message = stateManager.notReadyMessage {
@@ -117,7 +128,7 @@ struct RecordingOverlayView: View {
                 }
                 .background(
                     Group {
-                        if stateManager.currentState == .recording || stateManager.currentState == .processing {
+                        if displayState == .recording || displayState == .processing {
                             Capsule()
                                 .fill(Color(red: 0.05, green: 0.08, blue: 0.12))
                                 .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
@@ -131,7 +142,7 @@ struct RecordingOverlayView: View {
                 )
                 .overlay(
                     Group {
-                        if stateManager.currentState == .recording || stateManager.currentState == .processing {
+                        if displayState == .recording || displayState == .processing {
                             Capsule()
                                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
                         } else {
