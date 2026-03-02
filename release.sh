@@ -52,8 +52,12 @@ xcrun stapler staple "$DMG"
 echo "✅ DMG notarized and stapled: $DMG"
 
 # ── 3. Generate signed appcast entry ─────────────────────────
-mkdir -p "$RELEASES_DIR"
-cp "$DMG" "$RELEASES_DIR/"
+# Each version gets its own subdirectory so generate_appcast only
+# produces the new entry (with the correct tag URL), which is then
+# merged back into the full appcast.xml.
+VERSION_DIR="$RELEASES_DIR/$TAG"
+mkdir -p "$VERSION_DIR"
+cp "$DMG" "$VERSION_DIR/"
 
 # ── Verify embedded app version matches the release version ──
 MOUNT_POINT=$(mktemp -d)
@@ -66,7 +70,7 @@ rm -rf "$MOUNT_POINT"
 if [ "$EMBEDDED_VERSION" != "$VERSION" ]; then
   echo "❌ Version mismatch! DMG contains app version '$EMBEDDED_VERSION' but expected '$VERSION'."
   echo "   Please update CFBundleShortVersionString and CFBundleVersion in Xcode, rebuild, and retry."
-  rm -f "$RELEASES_DIR/$(basename "$DMG")"
+  rm -f "$VERSION_DIR/$(basename "$DMG")"
   exit 1
 fi
 echo "✅ Embedded app version verified: $EMBEDDED_VERSION"
@@ -79,14 +83,53 @@ if [ -z "$GENERATE_APPCAST" ]; then
   exit 1
 fi
 
+# Generate a partial appcast for just this release's DMG.
+TMP_APPCAST=$(mktemp /tmp/appcast_new_XXXXXX.xml)
 security find-generic-password -a "ed25519" -w > /tmp/vg_key.b64
 "$GENERATE_APPCAST" \
   --ed-key-file /tmp/vg_key.b64 \
-  "$RELEASES_DIR" \
+  "$VERSION_DIR" \
   --download-url-prefix "https://github.com/nkristianto/VocaGlyph/releases/download/$TAG/" \
-  -o "$REPO_ROOT/appcast.xml"
+  -o "$TMP_APPCAST"
 rm /tmp/vg_key.b64
-echo "✅ appcast.xml updated"
+
+# Merge: extract the new <item> block and prepend it into the existing appcast.
+NEW_ITEM=$(xmllint --xpath '//item' "$TMP_APPCAST" 2>/dev/null || \
+  python3 -c "
+import xml.etree.ElementTree as ET, sys
+tree = ET.parse('$TMP_APPCAST')
+for item in tree.findall('.//item'):
+    print(ET.tostring(item, encoding='unicode'))
+")
+rm -f "$TMP_APPCAST"
+
+if [ -f "$REPO_ROOT/appcast.xml" ]; then
+  # Insert new item after the opening <channel> tags (before the first existing <item>).
+  python3 - <<EOF
+import re, sys
+with open('$REPO_ROOT/appcast.xml', 'r') as f:
+    content = f.read()
+new_item = '''$NEW_ITEM'''
+# Insert before first <item>
+content = content.replace('<item>', new_item + '\n        <item>', 1)
+with open('$REPO_ROOT/appcast.xml', 'w') as f:
+    f.write(content)
+EOF
+  echo "✅ New <item> prepended to appcast.xml"
+else
+  # No existing appcast — run generate_appcast across ALL version dirs.
+  ALL_DMGS_DIR=$(mktemp -d)
+  find "$RELEASES_DIR" -name '*.dmg' -exec cp {} "$ALL_DMGS_DIR/" \;
+  security find-generic-password -a "ed25519" -w > /tmp/vg_key.b64
+  "$GENERATE_APPCAST" \
+    --ed-key-file /tmp/vg_key.b64 \
+    "$ALL_DMGS_DIR" \
+    --download-url-prefix "https://github.com/nkristianto/VocaGlyph/releases/download/$TAG/" \
+    -o "$REPO_ROOT/appcast.xml"
+  rm /tmp/vg_key.b64
+  rm -rf "$ALL_DMGS_DIR"
+  echo "✅ appcast.xml created"
+fi
 
 # ── 4. Commit and push appcast ────────────────────────────────
 cd "$REPO_ROOT"

@@ -19,7 +19,7 @@
             <sparkle:version>103</sparkle:version>
             <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.1/VocaGlyph-0.3.0.dmg" length="20600662" type="application/octet-stream" sparkle:edSignature="iuEhFREiwfmib7g+o9+Eey0eCNArL+Rw3rf1h09KY79/DWuHlmQlu/3zzrw+sprNP1usxyqrhH8df7MopAk7Cg=="/>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.0/VocaGlyph-0.3.0.dmg" length="20600662" type="application/octet-stream" sparkle:edSignature="iuEhFREiwfmib7g+o9+Eey0eCNArL+Rw3rf1h09KY79/DWuHlmQlu/3zzrw+sprNP1usxyqrhH8df7MopAk7Cg=="/>
         </item>
         <item>
             <title>0.2.0</title>
@@ -27,7 +27,7 @@
             <sparkle:version>94</sparkle:version>
             <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.1/VocaGlyph-0.2.0.dmg" length="18409712" type="application/octet-stream" sparkle:edSignature="XTF1Bg5pf477d2Eb2kLDf+CMvEK+xm9mvDV+jXI1X/5MBAFeiVX1zJIv+u5qNPs3fHfmsgObSzUExT2DCjQaDA=="/>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.2.0/VocaGlyph-0.2.0.dmg" length="18409712" type="application/octet-stream" sparkle:edSignature="XTF1Bg5pf477d2Eb2kLDf+CMvEK+xm9mvDV+jXI1X/5MBAFeiVX1zJIv+u5qNPs3fHfmsgObSzUExT2DCjQaDA=="/>
             <sparkle:deltas>
                 <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.2.0/VocaGlyph94-85.delta" sparkle:deltaFrom="85" length="1313026" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977840" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="80G3PKlueMYsaRqt2G5t6WSTTOG7nROt1Aub7rp7X1Uxaj0l2frqv8x7fqEcjTNPAnY8nNeVlLplOOTVAeltCw=="/>
                 <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.2.0/VocaGlyph94-83.delta" sparkle:deltaFrom="83" length="1310166" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977840" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="oEYTcIEN9PeeSp7ZBD3+m/kssism743DaKFUB+pR3XnGKgb7J8Me06ujmWQTRNEv3FWz3fZYr8Xz3NnulkZvAw=="/>
