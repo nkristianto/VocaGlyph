@@ -143,12 +143,32 @@ final class MicrophoneService {
         guard status == noErr else { return [] }
 
         // 2. Filter to input-capable devices only, then build MicrophoneDevice values.
+        //    Also exclude CoreAudio internal aggregate devices (e.g. CADefaultDeviceAggregate)
+        //    which macOS uses for routing but should never appear in a user-facing list.
         return deviceIDs.compactMap { deviceID -> MicrophoneDevice? in
             guard hasInputStreams(deviceID: deviceID) else { return nil }
+            guard !isAggregateDevice(deviceID: deviceID) else { return nil }
             guard let name = deviceName(deviceID: deviceID),
                   let uid  = deviceUID(deviceID: deviceID) else { return nil }
             return MicrophoneDevice(id: deviceID, name: name, uid: uid)
         }
+    }
+
+    /// Returns `true` when the device is a CoreAudio aggregate device.
+    /// macOS creates aggregate devices (e.g. `CADefaultDeviceAggregate`) internally for
+    /// routing purposes. They have input streams but are not physical/virtual mics that
+    /// users should select — matching AVFoundation's own filtering behaviour.
+    private func isAggregateDevice(deviceID: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyClass,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var classID: AudioClassID = 0
+        var dataSize = UInt32(MemoryLayout<AudioClassID>.size)
+        let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &classID)
+        guard status == noErr else { return false }
+        return classID == kAudioAggregateDeviceClassID
     }
 
     /// Returns `true` when the device has at least one input stream.
