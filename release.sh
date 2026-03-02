@@ -2,22 +2,24 @@
 # ──────────────────────────────────────────────────────────────
 # VocaGlyph Release Script
 # Usage: ./release.sh <version>   e.g. ./release.sh 0.1.0
-# Expects: VocaGlyph.app already notarized on ~/Desktop/
+# Expects: distribute-devid.sh has already been run (notarized app in dist/DevID/)
 # ──────────────────────────────────────────────────────────────
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION="${1:?Usage: $0 <version>  e.g. $0 1.0}"
 TAG="v$VERSION"
-APP=~/Desktop/VocaGlyph.app
-DMG=~/Desktop/VocaGlyph-${VERSION}.dmg
+APP="$SCRIPT_DIR/xcode-project/VocaGlyph/dist/DevID/VocaGlyph.app"
+DMG="$SCRIPT_DIR/xcode-project/VocaGlyph/dist/DevID/VocaGlyph-${VERSION}.dmg"
 RELEASES_DIR=~/releases/vocaglyph
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
 
 echo "🚀 Releasing VocaGlyph $TAG"
 
 # ── 1. Verify the notarized app exists ───────────────────────
 if [ ! -d "$APP" ]; then
-  echo "❌ VocaGlyph.app not found on Desktop. Notarize it first."
+  echo "❌ VocaGlyph.app not found at $APP"
+  echo "   Run ./xcode-project/VocaGlyph/distribute-devid.sh first."
   exit 1
 fi
 codesign --verify --deep --strict "$APP" && echo "✅ Signature OK"
@@ -44,7 +46,7 @@ create-dmg \
 # that Apple has no record of — so we must submit it separately.
 echo "Submitting DMG for notarization (may take 1-5 min)..."
 xcrun notarytool submit "$DMG" \
-  --keychain-profile "VocaGlyph-notary" \
+  --keychain-profile "AC_notary" \
   --wait
 xcrun stapler staple "$DMG"
 echo "✅ DMG notarized and stapled: $DMG"
