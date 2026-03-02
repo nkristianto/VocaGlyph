@@ -5,7 +5,6 @@ public actor EngineRouter {
     private var activeEngine: any TranscriptionEngine
     
     public init(engine: any TranscriptionEngine) {
-        Logger.shared.info("EngineRouter: Initialized with \(type(of: engine))")
         self.activeEngine = engine
     }
     

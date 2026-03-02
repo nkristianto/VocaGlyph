@@ -30,7 +30,7 @@ class WhisperService: ObservableObject, @unchecked Sendable {
     
     // Fetch from UserDefaults or fallback to recommended model
     private var defaultModelName: String {
-        UserDefaults.standard.string(forKey: "selectedModel") ?? ""
+        UserDefaults.standard.string(forKey: "selectedModel") ?? "apple-native"
     }
     
     // Convert UI string to WhisperKit locale code.

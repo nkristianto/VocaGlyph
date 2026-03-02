@@ -64,7 +64,6 @@ class ParakeetService: ObservableObject, @unchecked Sendable {
     // MARK: - Init
 
     init() {
-        Logger.shared.info("ParakeetService: Initialized.")
         restoreDownloadedModelsFromDisk()
         Task { await autoInitializeIfNeeded() }
     }

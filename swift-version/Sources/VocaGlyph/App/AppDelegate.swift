@@ -149,6 +149,14 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         // the app runs as a menu-bar agent with no Dock icon.
         NSApp.setActivationPolicy(.accessory)
 
+        // On first install UserDefaults has no "selectedModel" key.
+        // Write the default once so every service reads a consistent value
+        // instead of each applying its own nil-fallback (which differ: "", "apple-native", etc).
+        if UserDefaults.standard.string(forKey: "selectedModel") == nil {
+            UserDefaults.standard.set("apple-native", forKey: "selectedModel")
+            Logger.shared.info("AppDelegate: First launch — defaulting selectedModel to 'apple-native'.")
+        }
+
         // Seed default post-processing templates if this is a first launch
         if let container = sharedModelContainer {
             let context = container.mainContext
