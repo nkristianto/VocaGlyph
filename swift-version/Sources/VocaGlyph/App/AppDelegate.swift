@@ -518,8 +518,9 @@ extension AppDelegate: AppStateManagerDelegate {
         // The transcription has successfully completed.
         print("Final transcription output bound in AppDelegate: \(text)")
         
-        // Save to local history
-        if !text.isEmpty, let container = sharedModelContainer {
+        // Save to local history (skip when Privacy Mode is active)
+        let privacyModeEnabled = UserDefaults.standard.bool(forKey: "privacyModeEnabled")
+        if !text.isEmpty, !privacyModeEnabled, let container = sharedModelContainer {
             Task { @MainActor in
                 let context = container.mainContext
                 let newItem = TranscriptionItem(text: text)

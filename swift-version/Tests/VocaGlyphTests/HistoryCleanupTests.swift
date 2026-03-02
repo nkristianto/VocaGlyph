@@ -75,4 +75,42 @@ final class HistoryCleanupTests: XCTestCase {
         // Ensure recent item is kept
         XCTAssertTrue(postCleanupItems.contains(where: { $0.id == recentItem.id }), "Recent item was incorrectly deleted.")
     }
+
+    // MARK: - Privacy Mode Tests
+
+    func testHistoryNotSavedWhenPrivacyModeEnabled() throws {
+        // Arrange: enable Privacy Mode
+        UserDefaults.standard.set(true, forKey: "privacyModeEnabled")
+        defer { UserDefaults.standard.removeObject(forKey: "privacyModeEnabled") }
+
+        // Act
+        appDelegate.appStateManagerDidTranscribe(text: "Secret text")
+
+        // Wait for the async Task { @MainActor } to complete
+        let expectation = XCTestExpectation(description: "Wait for async save task")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        // Assert: no items saved
+        let items = try context.fetch(FetchDescriptor<TranscriptionItem>())
+        XCTAssertEqual(items.count, 0, "Expected 0 items when Privacy Mode is enabled, got \(items.count).")
+    }
+
+    func testHistorySavedWhenPrivacyModeDisabled() throws {
+        // Arrange: ensure Privacy Mode is off (default)
+        UserDefaults.standard.removeObject(forKey: "privacyModeEnabled")
+
+        // Act
+        appDelegate.appStateManagerDidTranscribe(text: "Normal text")
+
+        // Wait for the async Task { @MainActor } to complete
+        let expectation = XCTestExpectation(description: "Wait for async save task")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        // Assert: exactly one item saved
+        let items = try context.fetch(FetchDescriptor<TranscriptionItem>())
+        XCTAssertEqual(items.count, 1, "Expected 1 item when Privacy Mode is disabled, got \(items.count).")
+        XCTAssertEqual(items.first?.text, "Normal text")
+    }
 }

@@ -30,6 +30,7 @@ struct GeneralSettingsView: View {
                 VStack(alignment: .leading, spacing: 32) {
                     RecordingSetupSection(microphoneService: microphoneService)
                     SystemIntegrationSection()
+                    PrivacySettingsSection()
                     DeveloperOptionsSection()
                 }
                 .padding(40)
