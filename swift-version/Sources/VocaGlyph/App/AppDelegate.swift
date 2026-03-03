@@ -43,7 +43,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         let schema = Schema([
             TranscriptionItem.self,
             PostProcessingTemplate.self,
-            TemplateRule.self,
             WordReplacement.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -51,8 +50,18 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            print("Could not create ModelContainer: \(error)")
-            return nil
+            // Schema migration failure (e.g. TemplateRule model removed) — wipe store and start fresh.
+            // Templates are re-seeded automatically by TemplateSeederService on first launch.
+            print("ModelContainer open failed (\(error.localizedDescription)) — deleting store and recreating.")
+            let storeURL = modelConfiguration.url
+            try? FileManager.default.removeItem(at: storeURL)
+            // Also remove associated Write-Ahead-Log and SHM files.
+            for suffix in ["-wal", "-shm"] {
+                let sidecar = storeURL.deletingLastPathComponent()
+                    .appendingPathComponent(storeURL.lastPathComponent + suffix)
+                try? FileManager.default.removeItem(at: sidecar)
+            }
+            return try? ModelContainer(for: schema, configurations: [modelConfiguration])
         }
     }()
     

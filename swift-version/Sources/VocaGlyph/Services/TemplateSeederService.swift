@@ -28,7 +28,7 @@ public enum TemplateSeederService {
 
     // MARK: - Seed
 
-    /// Seeds default templates if none exist.
+    /// Seeds default templates if none exist (fresh install only).
     ///
     /// - Parameter context: The `ModelContext` to use for insertion.
     public static func seedDefaultTemplatesIfNeeded(context: ModelContext) {
@@ -105,7 +105,6 @@ public enum TemplateSeederService {
     // MARK: - Private: Remove Legacy Template
 
     /// Deletes the "Raw — No Processing" system template from the store if present.
-    /// Called on every launch so existing users are migrated automatically.
     private static func removeRawTemplateIfPresent(context: ModelContext) {
         let rawName = "Raw — No Processing"
         let descriptor = FetchDescriptor<PostProcessingTemplate>(
@@ -113,8 +112,6 @@ public enum TemplateSeederService {
         )
         guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return }
         for template in matches {
-            // If this was the active template, clear the active key so the app
-            // doesn't reference a deleted ID.
             if let activeId = UserDefaults.standard.string(forKey: activeTemplateKey),
                activeId == template.id.uuidString {
                 UserDefaults.standard.removeObject(forKey: activeTemplateKey)
@@ -126,48 +123,8 @@ public enum TemplateSeederService {
         Logger.shared.info("TemplateSeederService: Removed \(matches.count) 'Raw — No Processing' template(s).")
     }
 
-    private static func makeGeneralCleanup() -> PostProcessingTemplate {
-        let ruleTexts = [
-            "Remove filler words: uh, um, like, you know, I mean, I guess, so, actually, basically, literally.",
-            "Fix capitalization and punctuation.",
-            "Self-corrections: keep only the corrected wording and drop the original attempt.",
-            "Keep all sentences and meaning. Never answer questions or add any information.",
-            "Output only the cleaned text.",
-        ]
-        let template = PostProcessingTemplate(
-            name: "General Cleanup",
-            templateDescription: "Removes fillers, fixes capitalization and punctuation, and preserves all meaning.",
-            isSystem: true,
-            defaultRules: ruleTexts
-        )
-        for (index, text) in ruleTexts.enumerated() {
-            let rule = TemplateRule(order: index + 1, instruction: text)
-            rule.template = template
-            template.rules.append(rule)
-        }
-        return template
-    }
+    // MARK: - Private: Fetch Helper
 
-    private static func makeMeetingNotes() -> PostProcessingTemplate {
-        let ruleTexts = [
-            "Formalize the tone — convert casual language to professional language.",
-            "Capitalize proper nouns, names, and acronyms.",
-            "Fix grammar and punctuation.",
-            "Remove filler words: um, uh, you know, like.",
-        ]
-        let template = PostProcessingTemplate(
-            name: "Meeting Notes",
-            templateDescription: "Formalizes tone and capitalizes proper nouns for meeting transcriptions.",
-            isSystem: true,
-            defaultRules: ruleTexts
-        )
-        for (index, text) in ruleTexts.enumerated() {
-            let rule = TemplateRule(order: index + 1, instruction: text)
-            rule.template = template
-            template.rules.append(rule)
-        }
-        return template
-    }
     private static func fetchTemplate(named name: String, context: ModelContext) -> PostProcessingTemplate? {
         let descriptor = FetchDescriptor<PostProcessingTemplate>(
             predicate: #Predicate { $0.name == name }
@@ -175,28 +132,60 @@ public enum TemplateSeederService {
         return (try? context.fetch(descriptor))?.first
     }
 
+    // MARK: - Private: Template Factories
+
+    private static func makeGeneralCleanup() -> PostProcessingTemplate {
+        let prompt = """
+            - Remove filler words: uh, um, like, you know, I mean, I guess, so, actually, basically, literally.
+            - Fix capitalization and punctuation.
+            - Self-corrections: keep only the corrected wording and drop the original attempt.
+            - Keep all sentences and meaning. Never answer questions or add any information.
+            - Output only the cleaned text.
+            """
+        return PostProcessingTemplate(
+            name: "General Cleanup",
+            templateDescription: "Removes fillers, fixes capitalization and punctuation, and preserves all meaning.",
+            isSystem: true,
+            promptText: prompt,
+            defaultPrompt: prompt
+        )
+    }
+
+    private static func makeMeetingNotes() -> PostProcessingTemplate {
+        let prompt = """
+            - Formalize the tone — convert casual language to professional language.
+            - Capitalize proper nouns, names, and acronyms.
+            - Fix grammar and punctuation.
+            - Remove filler words: um, uh, you know, like.
+            """
+        return PostProcessingTemplate(
+            name: "Meeting Notes",
+            templateDescription: "Formalizes tone and capitalizes proper nouns for meeting transcriptions.",
+            isSystem: true,
+            promptText: prompt,
+            defaultPrompt: prompt
+        )
+    }
+
     private static func makeEmail() -> PostProcessingTemplate {
-        let ruleText = """
+        let prompt = """
             - Rewrite the transcript as a complete email: include a greeting (Hi), body paragraphs (2–4 sentences each), and closing (Thanks).
             - Use clear, friendly language unless the transcript is clearly professional — in that case, match that tone.
             - Fix grammar and spelling; remove fillers; keep all facts, names, dates, and action items.
             - Write numbers as numerals (e.g., 'five' → '5', 'twenty dollars' → '$20').
             - Do not invent new content. Don't add any information not in the transcript.
             """
-        let template = PostProcessingTemplate(
+        return PostProcessingTemplate(
             name: "Email",
             templateDescription: "Formats transcription as a complete email with greeting, body paragraphs, and closing.",
             isSystem: true,
-            defaultRules: [ruleText]
+            promptText: prompt,
+            defaultPrompt: prompt
         )
-        let rule = TemplateRule(order: 1, instruction: ruleText)
-        rule.template = template
-        template.rules.append(rule)
-        return template
     }
 
     private static func makeRewrite() -> PostProcessingTemplate {
-        let ruleText = """
+        let prompt = """
             - Rewrite the transcript with enhanced clarity, improved sentence structure, and better flow while preserving meaning and tone.
             - Fix grammar and spelling errors; remove fillers and stutters; collapse repetitions.
             - Format lists as proper bullet points or numbered lists. Write numbers as numerals (e.g., 'five' → '5').
@@ -204,15 +193,12 @@ public enum TemplateSeederService {
             - Preserve all names, numbers, dates, and key information exactly.
             - Output only the rewritten text. Don't add any information not in the transcript.
             """
-        let template = PostProcessingTemplate(
+        return PostProcessingTemplate(
             name: "Rewrite",
             templateDescription: "Rewrites transcription with enhanced clarity, improved sentence structure, and better flow while preserving meaning.",
             isSystem: true,
-            defaultRules: [ruleText]
+            promptText: prompt,
+            defaultPrompt: prompt
         )
-        let rule = TemplateRule(order: 1, instruction: ruleText)
-        rule.template = template
-        template.rules.append(rule)
-        return template
     }
 }

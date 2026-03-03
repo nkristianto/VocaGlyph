@@ -3,14 +3,14 @@ import SwiftData
 
 // MARK: - PostProcessingTemplate
 
-/// A named, ordered collection of post-processing rules stored in SwiftData.
+/// A named, free-text post-processing prompt stored in SwiftData.
 ///
-/// Templates replace the single free-text `UserDefaults` prompt with a structured
-/// set of discrete instructions that are rendered into a numbered system prompt at
-/// call-time, significantly reducing hallucination from local LLMs.
+/// Each template holds a single `promptText` that is passed directly to the
+/// post-processing engine. This replaces the previous per-rule `TemplateRule`
+/// model, which has been removed entirely.
 ///
 /// System templates (`isSystem == true`) are seeded on first launch and cannot be
-/// deleted. Their original rules are stored in `defaultRules` to allow a reset.
+/// deleted. The original prompt is stored in `defaultPrompt` to allow a reset.
 @Model
 public final class PostProcessingTemplate {
 
@@ -24,13 +24,13 @@ public final class PostProcessingTemplate {
     /// System templates cannot be deleted from the UI.
     public var isSystem: Bool
 
-    /// Snapshot of the original rule texts used to support "Reset to Default".
-    /// Only populated for system templates; empty for user-created templates.
-    public var defaultRules: [String]
+    /// The free-text prompt sent to the post-processing engine.
+    /// Empty string means the template is inactive (no post-processing applied).
+    public var promptText: String
 
-    /// Ordered rules. Use `.sorted(by: { $0.order < $1.order })` before rendering.
-    @Relationship(deleteRule: .cascade, inverse: \TemplateRule.template)
-    public var rules: [TemplateRule]
+    /// Snapshot of the original prompt used to support "Reset to Default".
+    /// Only populated for system templates; empty for user-created templates.
+    public var defaultPrompt: String
 
     public var createdAt: Date
     public var updatedAt: Date
@@ -42,7 +42,8 @@ public final class PostProcessingTemplate {
         name: String,
         templateDescription: String = "",
         isSystem: Bool = false,
-        defaultRules: [String] = [],
+        promptText: String = "",
+        defaultPrompt: String = "",
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -50,8 +51,8 @@ public final class PostProcessingTemplate {
         self.name = name
         self.templateDescription = templateDescription
         self.isSystem = isSystem
-        self.defaultRules = defaultRules
-        self.rules = []
+        self.promptText = promptText
+        self.defaultPrompt = defaultPrompt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

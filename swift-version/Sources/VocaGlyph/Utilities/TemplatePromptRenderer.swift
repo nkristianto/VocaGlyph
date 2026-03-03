@@ -5,46 +5,31 @@ import Foundation
 /// Stateless utility that renders a `PostProcessingTemplate` into a structured
 /// system prompt suitable for any post-processing engine.
 ///
-/// ### Why a numbered list?
-/// Local small models (Qwen 0.6B–7B) respond far more reliably to a numbered
-/// instruction list than to prose paragraphs. The header + footer "sandwich"
-/// constrains the model's output scope, suppressing chatty preambles and
-/// compliance responses that `PostProcessingOutputSanitizer` catches defensively.
-///
 /// ### Anti-hallucination length guard
-/// When the combined character count of all enabled rules exceeds
-/// `maxRecommendedRuleCharacters` (800), the model is more likely to hallucinate.
-/// Callers should surface a warning to the user via `isOverRecommendedLength(template:)`.
+/// When `promptText` exceeds `maxRecommendedPromptCharacters` (800 chars),
+/// the model is more likely to hallucinate. Callers should surface a warning
+/// to the user via `isOverRecommendedLength(template:)`.
 public enum TemplatePromptRenderer {
 
     // MARK: - Constants
 
-    /// Maximum recommended combined character count for all enabled rules.
+    /// Maximum recommended character count for a template's prompt text.
     /// Exceeding this limit may increase hallucination risk in local LLMs.
-    public static let maxRecommendedRuleCharacters = 800
+    public static let maxRecommendedPromptCharacters = 800
 
     // MARK: - Render
 
-    /// Renders a template's enabled rules into a structured system prompt.
+    /// Renders a template's `promptText` into a structured system prompt.
     ///
-    /// Rules are sorted by `order` (ascending) and filtered to `isEnabled == true`.
-    /// If no rules are enabled the method returns an empty string, which signals
-    /// to the caller that post-processing should be skipped entirely.
+    /// Returns an empty string when `promptText` is empty or whitespace-only,
+    /// which signals to the caller that post-processing should be skipped.
     ///
     /// - Parameter template: The template to render.
-    /// - Returns: A numbered-list system prompt, or an empty string when the
-    ///   template has no enabled rules.
+    /// - Returns: A structured system prompt, or an empty string when the
+    ///   template has no prompt text.
     public static func render(template: PostProcessingTemplate) -> String {
-        let enabledRules = template.rules
-            .filter { $0.isEnabled && !$0.instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .sorted { $0.order < $1.order }
-
-        guard !enabledRules.isEmpty else { return "" }
-
-        let numberedList = enabledRules
-            .enumerated()
-            .map { index, rule in "\(index + 1). \(rule.instruction.trimmingCharacters(in: .whitespacesAndNewlines))" }
-            .joined(separator: "\n")
+        let trimmed = template.promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
 
         return """
         You are a transcription refinement assistant. Apply ONLY the following rules. \
@@ -52,7 +37,7 @@ public enum TemplatePromptRenderer {
         Return ONLY the corrected transcription — nothing else.
 
         Rules:
-        \(numberedList)
+        \(trimmed)
 
         Return the corrected text only, with no preamble, label, or explanation.
         """
@@ -60,22 +45,20 @@ public enum TemplatePromptRenderer {
 
     // MARK: - Length Guard
 
-    /// Returns the combined character count of all enabled rule instructions.
+    /// Returns the character count of the template's prompt text.
     ///
     /// - Parameter template: The template to measure.
-    /// - Returns: Total character count of all enabled, non-empty rule instructions.
-    public static func totalRuleCharacters(template: PostProcessingTemplate) -> Int {
-        template.rules
-            .filter { $0.isEnabled }
-            .reduce(0) { $0 + $1.instruction.count }
+    /// - Returns: Character count of `promptText`.
+    public static func promptCharacterCount(template: PostProcessingTemplate) -> Int {
+        template.promptText.count
     }
 
-    /// Returns `true` when the combined enabled-rule length exceeds the recommended
+    /// Returns `true` when the prompt text length exceeds the recommended
     /// maximum, indicating an increased hallucination risk for local LLMs.
     ///
     /// - Parameter template: The template to check.
-    /// - Returns: `true` if total rule characters > `maxRecommendedRuleCharacters`.
+    /// - Returns: `true` if `promptText.count > maxRecommendedPromptCharacters`.
     public static func isOverRecommendedLength(template: PostProcessingTemplate) -> Bool {
-        totalRuleCharacters(template: template) > maxRecommendedRuleCharacters
+        promptCharacterCount(template: template) > maxRecommendedPromptCharacters
     }
 }

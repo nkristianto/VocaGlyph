@@ -3,8 +3,9 @@ import SwiftData
 
 // MARK: - TemplateEditorCard
 
-/// Floating card editor for a single template's name and ordered rules.
-/// Styled to match the app's `CustomConfirmationDialog` popup pattern.
+/// Floating card editor for a single template's name and free-text prompt.
+/// Edits are kept in local draft state and only written to SwiftData when
+/// the user taps "Save". This avoids unintentional auto-saves on every keystroke.
 struct TemplateEditorCard: View {
     @Environment(\.modelContext) private var modelContext
 
@@ -12,37 +13,45 @@ struct TemplateEditorCard: View {
     let onDismiss: () -> Void
     let onDeleteTemplate: () -> Void
 
-    @State private var showAddRule = false
-    @State private var newRuleText = ""
+    // Local draft state — written back to the model only on Save.
+    @State private var draftName: String = ""
+    @State private var draftPrompt: String = ""
+    // Anchors for dirty-check — set once in onAppear.
+    @State private var originalName: String = ""
+    @State private var originalPrompt: String = ""
+
+    private var isDirty: Bool {
+        draftName != originalName || draftPrompt != originalPrompt
+    }
+
     @State private var showResetConfirm = false
     @State private var showDeleteConfirm = false
-    @State private var editingRule: TemplateRule? = nil
-    @State private var editingRuleText = ""
+    @State private var showDiscardConfirm = false
 
     private var viewModel: TemplateEditorViewModel {
         TemplateEditorViewModel(modelContext: modelContext)
     }
 
-    var sortedRules: [TemplateRule] {
-        template.rules.sorted { $0.order < $1.order }
-    }
-
     var isOverLength: Bool {
-        TemplatePromptRenderer.isOverRecommendedLength(template: template)
+        draftPrompt.count > TemplatePromptRenderer.maxRecommendedPromptCharacters
     }
 
     var body: some View {
         ZStack {
             mainCard
-            addRuleOverlay
             resetConfirmOverlay
             deleteConfirmOverlay
-            editRuleOverlay
+            discardConfirmOverlay
         }
-        .animation(.easeInOut(duration: 0.15), value: showAddRule)
         .animation(.easeInOut(duration: 0.15), value: showResetConfirm)
         .animation(.easeInOut(duration: 0.15), value: showDeleteConfirm)
-        .animation(.easeInOut(duration: 0.15), value: editingRule == nil)
+        .animation(.easeInOut(duration: 0.15), value: showDiscardConfirm)
+        .onAppear {
+            draftName   = template.name
+            draftPrompt = template.promptText
+            originalName   = template.name
+            originalPrompt = template.promptText
+        }
     }
 
     // MARK: - Main Card
@@ -53,7 +62,7 @@ struct TemplateEditorCard: View {
             // Header
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    TextField("Template name", text: $template.name)
+                    TextField("Template name", text: $draftName)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Theme.navy)
                         .textFieldStyle(.plain)
@@ -64,7 +73,7 @@ struct TemplateEditorCard: View {
                     }
                 }
                 Spacer()
-                Button(action: onDismiss) {
+                Button(action: handleDismiss) {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Theme.textMuted)
@@ -76,7 +85,7 @@ struct TemplateEditorCard: View {
 
             Divider().background(Theme.textMuted.opacity(0.15))
 
-            rulesList
+            promptEditor
 
             Divider().background(Theme.textMuted.opacity(0.15))
 
@@ -88,80 +97,29 @@ struct TemplateEditorCard: View {
         .shadow(color: Color.black.opacity(0.15), radius: 24, x: 0, y: 8)
     }
 
-    // MARK: - Rules List
+    // MARK: - Prompt Editor
 
     @ViewBuilder
-    private var rulesList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if template.rules.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("No rules yet. Tap \"Add Rule\" below.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textMuted)
-                        Spacer()
-                    }
-                    .padding(20)
-                } else {
-                    ForEach(sortedRules) { rule in
-                        ruleRow(rule)
-                        if rule.id != sortedRules.last?.id {
-                            Divider()
-                                .background(Theme.textMuted.opacity(0.1))
-                                .padding(.horizontal, 16)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(height: 200)
-    }
+    private var promptEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Prompt")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.textMuted)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
 
-    @ViewBuilder
-    private func ruleRow(_ rule: TemplateRule) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Toggle("", isOn: Binding(
-                get: { rule.isEnabled },
-                set: { rule.isEnabled = $0; template.updatedAt = Date() }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-
-            Text(rule.instruction)
+            TextEditor(text: $draftPrompt)
                 .font(.system(size: 13))
-                .foregroundStyle(rule.isEnabled ? Theme.navy : Theme.textMuted)
-                .strikethrough(!rule.isEnabled, color: Theme.textMuted.opacity(0.5))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(2)
-
-            Button {
-                editingRuleText = rule.instruction
-                withAnimation(.easeInOut(duration: 0.15)) { editingRule = rule }
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textMuted)
-            }
-            .buttonStyle(.plain)
-            .help("Edit rule")
-
-            Button {
-                template.rules.removeAll { $0.id == rule.id }
-                modelContext.delete(rule)
-                viewModel.reorderRules(in: template)
-                template.updatedAt = Date()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(hex: "#EE6B6E"))
-            }
-            .buttonStyle(.plain)
-            .help("Delete rule")
+                .foregroundStyle(Theme.navy)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(hex: "#F8F7F4"))
+                .clipShape(.rect(cornerRadius: 8))
+                .padding(.horizontal, 12)
+                .frame(height: 200)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Footer
@@ -174,26 +132,15 @@ struct TemplateEditorCard: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                         .font(.system(size: 11))
-                    Text("Too many rules may reduce accuracy for local AI engines.")
+                    Text("Long prompts may reduce accuracy for local AI engines.")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textMuted)
                 }
             }
 
             HStack(spacing: 10) {
-                Button {
-                    newRuleText = ""
-                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = true }
-                } label: {
-                    Label("Add Rule", systemImage: "plus.circle")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                if template.isSystem && !template.defaultRules.isEmpty {
+                // Reset / Delete (left side)
+                if template.isSystem && !template.defaultPrompt.isEmpty {
                     Button("Reset to Default") {
                         withAnimation(.easeInOut(duration: 0.15)) { showResetConfirm = true }
                     }
@@ -218,48 +165,62 @@ struct TemplateEditorCard: View {
                     .background(Color(hex: "#EE6B6E"))
                     .clipShape(.rect(cornerRadius: 6))
                 }
+
+                Spacer()
+
+                // Save (right side)
+                Button("Save") {
+                    commitSave()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(isDirty ? Theme.accent : Theme.accent.opacity(0.4))
+                .clipShape(.rect(cornerRadius: 6))
+                .disabled(!isDirty)
             }
         }
         .padding(16)
     }
 
-    // MARK: - Overlays
+    // MARK: - Actions
 
-    @ViewBuilder
-    private var addRuleOverlay: some View {
-        if showAddRule {
-            Color.black.opacity(0.10)
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
-                }
-            AddRuleCard(
-                ruleText: $newRuleText,
-                onDismiss: {
-                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
-                },
-                onCommit: {
-                    viewModel.commitAddRule(to: template, text: newRuleText)
-                    newRuleText = ""
-                    withAnimation(.easeInOut(duration: 0.15)) { showAddRule = false }
-                }
-            )
-            .transition(.scale(scale: 0.95).combined(with: .opacity))
+    private func commitSave() {
+        let trimmedName = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        template.name = trimmedName.isEmpty ? template.name : trimmedName
+        template.promptText = draftPrompt
+        template.updatedAt = Date()
+        // Advance anchors so isDirty recomputes to false.
+        originalName   = template.name
+        originalPrompt = draftPrompt
+        try? modelContext.save()
+    }
+
+    private func handleDismiss() {
+        if isDirty {
+            withAnimation(.easeInOut(duration: 0.15)) { showDiscardConfirm = true }
+        } else {
+            onDismiss()
         }
     }
+
+    // MARK: - Overlays
 
     @ViewBuilder
     private var resetConfirmOverlay: some View {
         if showResetConfirm {
             Color.black.opacity(0.10).ignoresSafeArea().transition(.opacity)
             CustomConfirmationDialog(
-                title: "Reset to default rules?",
-                message: "Your custom changes will be lost. The original rules will be restored.",
+                title: "Reset to default prompt?",
+                message: "Your custom changes will be lost. The original prompt will be restored.",
                 confirmTitle: "Yes, reset it",
                 cancelTitle: "Cancel",
                 onConfirm: {
-                    viewModel.resetToDefaults(template: template)
+                    draftPrompt = template.defaultPrompt
+                    draftName = template.name
+                    // isDirty recomputes automatically from draft vs anchor comparison.
                     withAnimation(.easeInOut(duration: 0.15)) { showResetConfirm = false }
                 },
                 onCancel: {
@@ -293,24 +254,23 @@ struct TemplateEditorCard: View {
     }
 
     @ViewBuilder
-    private var editRuleOverlay: some View {
-        if let rule = editingRule {
-            Color.black.opacity(0.10)
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
-                }
-            EditRuleOverlay(
-                editingRuleText: $editingRuleText,
-                onDismiss: {
-                    withAnimation(.easeInOut(duration: 0.15)) { editingRule = nil }
+    private var discardConfirmOverlay: some View {
+        if showDiscardConfirm {
+            Color.black.opacity(0.10).ignoresSafeArea().transition(.opacity)
+            CustomConfirmationDialog(
+                title: "Discard changes?",
+                message: "You have unsaved changes. Close without saving?",
+                confirmTitle: "Discard",
+                cancelTitle: "Keep Editing",
+                onConfirm: {
+                    showDiscardConfirm = false
+                    onDismiss()
                 },
-                onSave: { trimmed in
-                    rule.instruction = trimmed
-                    template.updatedAt = Date()
+                onCancel: {
+                    withAnimation(.easeInOut(duration: 0.15)) { showDiscardConfirm = false }
                 }
             )
+            .transition(.scale(scale: 0.95).combined(with: .opacity))
         }
     }
 }

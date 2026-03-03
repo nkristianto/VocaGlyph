@@ -12,7 +12,7 @@ final class TextProcessingSettingsViewTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema([PostProcessingTemplate.self, TemplateRule.self])
+        let schema = Schema([PostProcessingTemplate.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: config)
     }
