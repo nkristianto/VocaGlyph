@@ -3,7 +3,7 @@ import SwiftData
 
 // MARK: - TemplateSeederService
 
-/// Seeds the three default system `PostProcessingTemplate` records into SwiftData
+/// Seeds the four default system `PostProcessingTemplate` records into SwiftData
 /// on first launch. This is a no-op if any template already exists in the store.
 ///
 /// **Seeded Templates**
@@ -12,9 +12,13 @@ import SwiftData
 /// |-------------------------|----------|-------------------|
 /// | General Cleanup         | true     | ✅ yes             |
 /// | Meeting Notes           | true     | no                |
+/// | Email                   | true     | no                |
+/// | Rewrite                 | true     | no                |
 ///
 /// Call `seedDefaultTemplatesIfNeeded(context:)` once from `AppDelegate`
 /// inside `initializeCoreServices()`, after the `ModelContainer` is ready.
+/// Then call `migrateSystemTemplatesIfNeeded(context:)` immediately after
+/// to ensure Email and Rewrite are present on existing installations.
 public enum TemplateSeederService {
 
     // MARK: - UserDefaults Key
@@ -43,13 +47,17 @@ public enum TemplateSeederService {
 
         let generalCleanup = makeGeneralCleanup()
         let meetingNotes = makeMeetingNotes()
+        let email = makeEmail()
+        let rewrite = makeRewrite()
 
         context.insert(generalCleanup)
         context.insert(meetingNotes)
+        context.insert(email)
+        context.insert(rewrite)
 
         do {
             try context.save()
-            Logger.shared.info("TemplateSeederService: Seeded 2 default templates.")
+            Logger.shared.info("TemplateSeederService: Seeded 4 default templates.")
 
             // Activate "General Cleanup" by default
             UserDefaults.standard.set(generalCleanup.id.uuidString, forKey: activeTemplateKey)
@@ -60,6 +68,41 @@ public enum TemplateSeederService {
     }
 
     // MARK: - Migration
+
+    /// Ensures Email and Rewrite system templates exist on existing installations.
+    ///
+    /// Safe to call on every launch — it is fully **idempotent**.
+    /// Only inserts templates that are missing; never modifies existing ones.
+    ///
+    /// - Parameter context: The `ModelContext` to use for reads and writes.
+    public static func migrateSystemTemplatesIfNeeded(context: ModelContext) {
+        var didChange = false
+
+        if fetchTemplate(named: "Email", context: context) == nil {
+            Logger.shared.info("TemplateSeederService: Inserting missing 'Email' template.")
+            context.insert(makeEmail())
+            didChange = true
+        }
+
+        if fetchTemplate(named: "Rewrite", context: context) == nil {
+            Logger.shared.info("TemplateSeederService: Inserting missing 'Rewrite' template.")
+            context.insert(makeRewrite())
+            didChange = true
+        }
+
+        if didChange {
+            do {
+                try context.save()
+                Logger.shared.info("TemplateSeederService: Migration complete.")
+            } catch {
+                Logger.shared.error("TemplateSeederService: Migration save failed — \(error.localizedDescription)")
+            }
+        } else {
+            Logger.shared.info("TemplateSeederService: No migration needed, all templates present.")
+        }
+    }
+
+    // MARK: - Private: Remove Legacy Template
 
     /// Deletes the "Raw — No Processing" system template from the store if present.
     /// Called on every launch so existing users are migrated automatically.
@@ -123,6 +166,53 @@ public enum TemplateSeederService {
             rule.template = template
             template.rules.append(rule)
         }
+        return template
+    }
+    private static func fetchTemplate(named name: String, context: ModelContext) -> PostProcessingTemplate? {
+        let descriptor = FetchDescriptor<PostProcessingTemplate>(
+            predicate: #Predicate { $0.name == name }
+        )
+        return (try? context.fetch(descriptor))?.first
+    }
+
+    private static func makeEmail() -> PostProcessingTemplate {
+        let ruleText = """
+            - Rewrite the transcript as a complete email: include a greeting (Hi), body paragraphs (2–4 sentences each), and closing (Thanks).
+            - Use clear, friendly language unless the transcript is clearly professional — in that case, match that tone.
+            - Fix grammar and spelling; remove fillers; keep all facts, names, dates, and action items.
+            - Write numbers as numerals (e.g., 'five' → '5', 'twenty dollars' → '$20').
+            - Do not invent new content. Don't add any information not in the transcript.
+            """
+        let template = PostProcessingTemplate(
+            name: "Email",
+            templateDescription: "Formats transcription as a complete email with greeting, body paragraphs, and closing.",
+            isSystem: true,
+            defaultRules: [ruleText]
+        )
+        let rule = TemplateRule(order: 1, instruction: ruleText)
+        rule.template = template
+        template.rules.append(rule)
+        return template
+    }
+
+    private static func makeRewrite() -> PostProcessingTemplate {
+        let ruleText = """
+            - Rewrite the transcript with enhanced clarity, improved sentence structure, and better flow while preserving meaning and tone.
+            - Fix grammar and spelling errors; remove fillers and stutters; collapse repetitions.
+            - Format lists as proper bullet points or numbered lists. Write numbers as numerals (e.g., 'five' → '5').
+            - Organize into well-structured paragraphs of 2–4 sentences.
+            - Preserve all names, numbers, dates, and key information exactly.
+            - Output only the rewritten text. Don't add any information not in the transcript.
+            """
+        let template = PostProcessingTemplate(
+            name: "Rewrite",
+            templateDescription: "Rewrites transcription with enhanced clarity, improved sentence structure, and better flow while preserving meaning.",
+            isSystem: true,
+            defaultRules: [ruleText]
+        )
+        let rule = TemplateRule(order: 1, instruction: ruleText)
+        rule.template = template
+        template.rules.append(rule)
         return template
     }
 }

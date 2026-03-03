@@ -161,6 +161,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         if let container = sharedModelContainer {
             let context = container.mainContext
             TemplateSeederService.seedDefaultTemplatesIfNeeded(context: context)
+            TemplateSeederService.migrateSystemTemplatesIfNeeded(context: context)
             stateManager.modelContext = context
         }
 
