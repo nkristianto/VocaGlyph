@@ -6,6 +6,14 @@
         <description>VocaGlyph release updates</description>
         <language>en</language>
         <item>
+            <title>0.3.3</title>
+            <pubDate>Tue, 03 Mar 2026 20:00:19 +0700</pubDate>
+            <sparkle:version>116</sparkle:version>
+            <sparkle:shortVersionString>0.3.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.6</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/nkristianto/VocaGlyph/releases/download/v0.3.3/VocaGlyph-0.3.3.dmg" length="20638372" type="application/octet-stream" sparkle:edSignature="jZpzMJ01zs9a00HPZpWHLnpIa6Y6w2fnXTvKL7fE4wCdcg1kUSkGZpQKljTmxqMaySZ9H8cl2EG6su1dkIvDCA=="/>
+        </item>
+        <item>
             <title>0.3.2</title>
             <pubDate>Tue, 03 Mar 2026 03:01:26 +0700</pubDate>
             <sparkle:version>114</sparkle:version>
