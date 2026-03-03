@@ -2,7 +2,30 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Sandbox -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Microphone access for audio recording -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+
+	<!-- Network access for downloading models and Sparkle update checks -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- User-selected file read (e.g. model files) -->
 	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+
+	<!-- Required for Sparkle to write the downloaded DMG to ~/Downloads
+	     and launch the installer XPC service. Without this, Sparkle fails
+	     with "error occurred while launching the installer". -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+
+	<!-- Required for OutputService to paste transcribed text into other apps -->
+	<key>com.apple.security.automation.apple-events</key>
 	<true/>
 </dict>
 </plist>

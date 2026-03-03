@@ -84,7 +84,7 @@ if [ -z "$GENERATE_APPCAST" ]; then
 fi
 
 # Generate a partial appcast for just this release's DMG.
-TMP_APPCAST=$(mktemp /tmp/appcast_new_XXXXXX.xml)
+TMP_APPCAST=$(mktemp -u /tmp/appcast_new_XXXXXX.xml)
 security find-generic-password -a "ed25519" -w > /tmp/vg_key.b64
 "$GENERATE_APPCAST" \
   --ed-key-file /tmp/vg_key.b64 \
